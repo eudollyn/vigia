@@ -40,6 +40,9 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | 💻 | **Notebook como alto-falante** | Uma página no navegador do notebook toca a voz e usa o microfone dele. Não instala nada. |
 | 🎵 | **Modo música** | Pausa os comandos contínuos, aumenta a voz e adapta o microfone ao som da música. |
 | 🔒 | **Contatos privados** | Para quem você escolher, ele diz só "Mensagem de Fulano", sem ler o conteúdo. |
+| 📦 | **Respeita as arquivadas** | Conversas arquivadas no WhatsApp ficam em silêncio. Arquivou ou desarquivou no celular, ele atualiza na hora. |
+| 🔤 | **Pronúncia certa** | Ensine como falar nomes difíceis (`Thalyta=Talíta`). Só a voz muda, a tela continua igual. |
+| 💸 | **Econômico** | Grupos de baixa prioridade não gastam a cota da IA: só entram no resumo de hora em hora. |
 
 ---
 
@@ -139,6 +142,7 @@ A página tem céu animado, uma esfera que reage à voz, cartões com os último
 | `SILENCIO` | Horário sem voz (só notificação) | `22-7` |
 | `BAIXA_PRIORIDADE` | Grupos que só entram no resumo de hora em hora | `Promoções,Condomínio` |
 | `PRIVADOS` | Contatos cujo conteúdo não é lido em voz alta | `Mãe,Amor` |
+| `PRONUNCIA` | Como a voz fala certos nomes (só na fala) | `Thalyta=Talíta;Joao=João` |
 | `SAIDA_VOZ` | Onde a voz toca | `notebook` · `pc` · `ambos` |
 | `MICROFONE_ORIGEM` | De onde vem a sua voz | `notebook` · `pc` |
 | `CLIMA_CIDADE` / `CLIMA_LAT` / `CLIMA_LON` | Previsão do bom dia | `Recife` / `-8.05` / `-34.9` |
@@ -175,6 +179,18 @@ Confira o domínio do e-mail e o `IMAP_HOST`. No Gmail, use uma **senha de app**
 <summary><b>A voz parou / "cota excedida"</b></summary>
 
 A voz padrão (Microsoft) é grátis e não tem cota. Se você trocou para `VOZ_MOTOR=google`, a cota grátis do Gemini TTS é pequena: volte para `microsoft`.
+</details>
+
+<details>
+<summary><b>"Gemini 429: You exceeded your current quota"</b></summary>
+
+A cota grátis do dia acabou. O Vigia continua funcionando com o **resumo simples** (o começo da mensagem) e volta sozinho quando a cota renova. Para gastar menos, coloque os grupos barulhentos (promoções, por exemplo) em `BAIXA_PRIORIDADE`: eles não usam a IA.
+</details>
+
+<details>
+<summary><b>Uma conversa arquivada ainda avisa</b></summary>
+
+A lista de arquivadas é lida a cada vez que o Vigia conecta (o log mostra *"N conversas arquivadas"*). Reinicie o Vigia; arquivamentos feitos com ele ligado valem na hora.
 </details>
 
 <details>

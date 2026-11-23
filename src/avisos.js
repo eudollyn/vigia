@@ -61,8 +61,15 @@ async function vozWindows(texto) {
 let avisouVoz = false;
 
 // Ordem de tentativa: motor escolhido → Microsoft → (voz do Windows, em tocar())
+// Pronúncia: troca só no que é FALADO (PRONUNCIA=Thalyta=Talíta;Outro=Outro jeito). Palavra inteira, sem diferenciar maiúsculas.
+export function pronunciar(texto) {
+  if (!config.pronuncia.length) return texto;
+  const mapa = new Map(config.pronuncia.map(([de, para]) => [de.toLowerCase(), para]));
+  // separa em palavras (letras) e o resto; troca só palavras inteiras ("Thalytinha" não vira "Talítinha")
+  return String(texto).split(/(\p{L}+)/u).map((p) => mapa.get(p.toLowerCase()) ?? p).join('');
+}
 async function gerarAudio(texto) {
-  const t = texto.slice(0, 600);
+  const t = pronunciar(texto).slice(0, 600);
   const motores = [];
   if (config.vozMotor === 'google' && config.geminiChave) motores.push(['Google', () => import('./voz-google.js').then((m) => m.vozGoogle(t))]);
   if (config.vozMotor !== 'windows') motores.push(['Microsoft', () => import('./voz-microsoft.js').then((m) => m.vozMicrosoft(t))]);

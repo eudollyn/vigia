@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config, emailAtivo, DADOS } from './config.js';
 import { avisar, iniciarResumoBaixa, log, notificar } from './avisos.js';
-import { resumir } from './resumo.js';
+import { resumir, resumoSimples } from './resumo.js';
 import { iniciarEmail } from './email.js';
 import { iniciarWhatsApp } from './whatsapp.js';
 
@@ -24,10 +24,12 @@ const dominioProprio = (config.email.usuario.split('@')[1] || '').toLowerCase();
 const mesmoDominio = (end) => Boolean(dominioProprio && String(end || '').toLowerCase().endsWith('@' + dominioProprio));
 
 async function aoChegar(msg) {
-  const r = await resumir(msg);
-  // Regra dela: só os nomes de BAIXA_PRIORIDADE (ex.: grupo do Lobão) ficam em baixa; todo o resto avisa e fala.
+  // Regra: só os nomes de BAIXA_PRIORIDADE (ex.: grupo de promoções) ficam em baixa; todo o resto avisa e fala.
   const nome = `${msg.grupo || ''} ${msg.de || ''} ${msg.endereco || ''}`.toLowerCase();
-  if (config.baixaPrioridade.some((b) => nome.includes(b))) r.prioridade = 'baixa';
+  const ehBaixa = config.baixaPrioridade.some((b) => nome.includes(b));
+  // Baixa prioridade nunca é falada: não gasta a cota da IA com ela (resumo simples basta para o resumo de hora em hora)
+  const r = ehBaixa ? resumoSimples(msg) : await resumir(msg);
+  if (ehBaixa) r.prioridade = 'baixa';
   // E-mail de newsletter/anúncio: não avisa nada (só fica no histórico). Exige as DUAS coisas: a IA achar que é
   // propaganda E o e-mail ter marca de envio em massa (Precedence: bulk, noreply, mkt@...). E-mail do próprio domínio nunca.
   else if (msg.canal === 'email' && r.prioridade === 'baixa' && msg.automatico && !mesmoDominio(msg.endereco)) r.prioridade = 'silencio';

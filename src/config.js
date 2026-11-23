@@ -52,6 +52,8 @@ export const config = {
   saidaVoz: (e.SAIDA_VOZ || 'notebook').trim().toLowerCase(),
   altoFalantePorta: num(e.ALTO_FALANTE_PORTA, 8765),
   saudacaoNome: (e.SAUDACAO_NOME ?? '').trim(), // ex.: "Sr. João" → "Bom dia, Sr. João!"
+  // Como a voz deve FALAR certas palavras (a tela não muda). Formato: Thalyta=Talíta;Outro=Jeito de falar
+  pronuncia: (e.PRONUNCIA ?? '').split(';').map((p) => p.split('=').map((s) => s.trim())).filter(([a, b]) => a && b),
   // Previsão do tempo no bom dia (padrão: São Paulo; troque pela sua cidade)
   climaCidade: (e.CLIMA_CIDADE || 'São Paulo').trim(),
   climaLat: num(e.CLIMA_LAT, -23.55),

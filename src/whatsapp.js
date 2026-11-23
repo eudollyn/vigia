@@ -54,6 +54,21 @@ function descrever(message) {
   }
 }
 
+// ---------- conversas arquivadas: não geram aviso nenhum ----------
+const ARQ_ARQUIVADAS = path.join(DADOS, 'arquivadas.json');
+let arquivadas = new Set();
+try { arquivadas = new Set(JSON.parse(fs.readFileSync(ARQ_ARQUIVADAS, 'utf8'))); } catch {}
+let salvarArqT;
+function marcarArquivada(id, sim) {
+  if (!id) return;
+  const n = jidNormalizedUser(id);
+  const antes = arquivadas.has(n);
+  if (sim) arquivadas.add(n); else arquivadas.delete(n);
+  if (antes !== !!sim) { clearTimeout(salvarArqT); salvarArqT = setTimeout(() => fs.writeFileSync(ARQ_ARQUIVADAS, JSON.stringify([...arquivadas])), 2000); }
+}
+const estaArquivada = (ids) => ids.some((i) => arquivadas.has(jidNormalizedUser(i)));
+export const totalArquivadas = () => arquivadas.size;
+
 // ---------- áudios recebidos: baixa e transcreve com o Gemini ----------
 async function transcreverAudio(msg, descricao) {
   const m = normalizeMessageContent(msg.message);
@@ -172,6 +187,11 @@ export function iniciarWhatsApp(aoChegar) {
     sock.ev.on('contacts.upsert', (lista) => { for (const c of lista) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); });
     sock.ev.on('contacts.update', (lista) => { for (const c of lista) if (c.id) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); });
     sock.ev.on('groups.update', (lista) => { for (const g of lista) if (g.id && g.subject) nomesGrupo[g.id] = g.subject; });
+    // arquivar/desarquivar no celular (e a lista inicial ao conectar)
+    const lerChats = (lista) => { for (const c of lista || []) if (c?.id && typeof c.archived === 'boolean') marcarArquivada(c.id, c.archived); };
+    sock.ev.on('chats.upsert', lerChats);
+    sock.ev.on('chats.update', lerChats);
+    sock.ev.on('messaging-history.set', ({ chats }) => lerChats(chats));
 
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
@@ -190,6 +210,19 @@ export function iniciarWhatsApp(aoChegar) {
           for (const [id, m] of Object.entries(g || {})) if (m?.subject) { gruposTodos[id] = m.subject; nomesGrupo[id] = m.subject; }
           log(`WhatsApp: ${Object.keys(gruposTodos).length} grupos carregados para envio por voz.`);
         }).catch(() => {});
+        // Lista de arquivadas: pede uma cópia completa só da coleção de configurações das conversas ("regular_low").
+        // Na sincronização inicial o Baileys só libera o "arquivada" de conversas que vieram no histórico (que não baixamos),
+        // então refazemos essa coleção do zero como sincronização normal; assim cada "arquivada" vira um chats.update.
+        setTimeout(async () => {
+          try {
+            await state.keys.set({ 'app-state-sync-version': { regular_low: null } });
+            await sock.resyncAppState(['regular_low'], false);
+          } catch (e) { log(`WhatsApp: não consegui ler as arquivadas (${e.message})`); }
+          setTimeout(() => {
+            const nomes = [...arquivadas].map((id) => gruposTodos[id] || nomesGrupo[id] || contatos[id]?.name || contatos[id]?.notify || id.split('@')[0]);
+            log(`WhatsApp: ${arquivadas.size} conversas arquivadas (sem aviso): ${nomes.join(' · ')}`);
+          }, 3000);
+        }, 6000);
       }
       if (connection === 'close') {
         const codigo = lastDisconnect?.error?.output?.statusCode;
@@ -218,6 +251,7 @@ export function iniciarWhatsApp(aoChegar) {
           if (isJidStatusBroadcast(jid) || isJidBroadcast(jid) || isJidNewsletter(jid)) continue;
           const idsChat = [jid, msg.key.remoteJidAlt].filter(Boolean).map((j) => jidNormalizedUser(j));
           if (msg.key.fromMe) { if (!isJidGroup(jid)) respondeu(idsChat); continue; } // você respondeu (celular/PC)
+          if (estaArquivada(idsChat)) continue; // conversa arquivada: nenhum aviso
           if (Number(msg.messageTimestamp || 0) < inicio) continue;
           if (vistos.has(msg.key.id)) continue;
           vistos.add(msg.key.id); if (vistos.size > 2000) vistos.delete(vistos.values().next().value);
