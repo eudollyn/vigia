@@ -1,0 +1,119 @@
+// Alto-falante e microfone pela rede: o notebook abre uma página no navegador,
+// toca as falas do Vigia e, quando o Vigia pede, grava a sua voz e manda de volta.
+// Sem instalar nada no notebook. Protegido por uma chave na URL (só quem tem o link acessa).
+import http from 'node:http';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { config, DADOS } from './config.js';
+import { log } from './avisos.js';
+
+const ARQ_CHAVE = path.join(DADOS, 'alto-falante-chave.txt');
+let chave;
+try { chave = fs.readFileSync(ARQ_CHAVE, 'utf8').trim(); } catch {}
+if (!chave) { chave = crypto.randomBytes(9).toString('base64url'); fs.writeFileSync(ARQ_CHAVE, chave); }
+
+const clientes = [];                 // { res, mic } conexões abertas (páginas de notebook), a última é a mais nova
+const audios = new Map();            // id → caminho do WAV
+const esperando = new Map();         // id → resolve (fim de reprodução / fala recebida)
+
+export const conectado = () => clientes.length > 0;
+const ouvintesComando = [], ouvintesConexao = [];
+/** fn(comando, textoOuvido) para "ate-amanha", "cancela", "responda" ditos no notebook */
+export const aoComando = (fn) => ouvintesComando.push(fn);
+/** fn() quando um notebook conecta na página */
+export const aoConectar = (fn) => ouvintesConexao.push(fn);
+/** Mostra um aviso na lista da página (sem conteúdo para contatos privados). */
+export function mostrarAviso(a) {
+  const dados = JSON.stringify(a);
+  for (const c of clientes) c.res.write(`event: aviso\ndata: ${dados}\n\n`);
+}
+/** Há um notebook conectado com microfone liberado? */
+export const temMic = () => clientes.some((c) => c.mic);
+
+export function enderecos() {
+  const ips = Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
+  return ips.map((ip) => `http://${ip}:${config.altoFalantePorta}/?k=${chave}`);
+}
+
+/** Manda o WAV para o(s) notebook(s) e espera terminar de tocar. Devolve false se ninguém estiver conectado. */
+export function tocarRemoto(arq) {
+  if (!clientes.length) return Promise.resolve(false);
+  const id = crypto.randomBytes(6).toString('hex');
+  audios.set(id, arq);
+  let segundos = 5;
+  try { segundos = Math.max(1, (fs.statSync(arq).size - 44) / 48000); } catch {} // 24 kHz, 16 bits, mono
+  return new Promise((resolve) => {
+    const fim = (ok) => { clearTimeout(t); esperando.delete(id); setTimeout(() => audios.delete(id), 60_000); resolve(ok); };
+    const t = setTimeout(() => fim(true), (segundos + 6) * 1000); // se a página não responder, segue em frente
+    esperando.set(id, fim);
+    for (const c of clientes) c.res.write(`event: tocar\ndata: ${id}\n\n`);
+  });
+}
+
+/** Pede ao notebook para ouvir (com bipe e detecção de fala no navegador). → WAV 16 kHz ou null. */
+export function ouvirRemoto({ esperaMs = 7000, silencioMs = 1400, maxMs = 20000 } = {}) {
+  const c = [...clientes].reverse().find((x) => x.mic);
+  if (!c) return Promise.resolve(null);
+  const id = crypto.randomBytes(6).toString('hex');
+  return new Promise((resolve) => {
+    const fim = (wav) => { clearTimeout(t); esperando.delete(id); resolve(wav && wav.length > 1000 ? wav : null); };
+    const t = setTimeout(() => fim(null), esperaMs + maxMs + 8000);
+    esperando.set(id, fim);
+    c.res.write(`event: ouvir\ndata: ${JSON.stringify({ id, esperaMs, silencioMs, maxMs })}\n\n`);
+  });
+}
+
+// Página do notebook: src/pagina.html (relida a cada acesso, para mudanças valerem sem reiniciar)
+const PAGINA_ARQ = new URL('./pagina.html', import.meta.url);
+
+export function iniciarAltoFalante() {
+  const srv = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://x');
+    if (url.searchParams.get('k') !== chave) { res.writeHead(403).end('Link sem a chave. Use o endereço de dados/LINK-DO-NOTEBOOK.txt.'); return; }
+    if (url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(fs.readFileSync(PAGINA_ARQ)); return; }
+    if (url.pathname === '/eventos') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+      res.write('retry: 3000\n\n');
+      res.write(`event: config\ndata: ${JSON.stringify({ nome: config.saudacaoNome })}\n\n`);
+      const cli = { res, mic: url.searchParams.get('mic') === '1' };
+      clientes.push(cli);
+      for (const fn of ouvintesConexao) setTimeout(() => Promise.resolve(fn(cli)).catch(() => {}), 2500);
+      log(`alto-falante: notebook conectado (${req.socket.remoteAddress?.replace('::ffff:', '')}), microfone ${cli.mic ? 'liberado' : 'indisponível'}`);
+      const ping = setInterval(() => res.write(': ping\n\n'), 20_000);
+      req.on('close', () => {
+        clearInterval(ping);
+        const i = clientes.indexOf(cli); if (i >= 0) clientes.splice(i, 1);
+        log('alto-falante: notebook desconectou (voz e microfone voltam para o PC)');
+      });
+      return;
+    }
+    let m = /^\/audio\/([a-f0-9]+)$/.exec(url.pathname);
+    if (m && audios.has(m[1])) { res.writeHead(200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' }); fs.createReadStream(audios.get(m[1])).pipe(res); return; }
+    m = /^\/tocado\/([a-f0-9]+)$/.exec(url.pathname);
+    if (m && req.method === 'POST') { esperando.get(m[1])?.(true); res.writeHead(204).end(); return; }
+    if (url.pathname === '/comando' && req.method === 'POST') {
+      const c = url.searchParams.get('c'), t = (url.searchParams.get('t') || '').slice(0, 300);
+      res.writeHead(204).end();
+      if (['ate-amanha', 'cancela', 'responda', 'enviar', 'lembrete'].includes(c)) {
+        log(`comando de voz: ${c} ("${t}")`);
+        for (const fn of ouvintesComando) Promise.resolve(fn(c, t)).catch((e) => log(`comando ${c}: ${e.message}`));
+      }
+      return;
+    }
+    m = /^\/fala\/([a-f0-9]+)$/.exec(url.pathname);
+    if (m && req.method === 'POST') {
+      const partes = []; let tam = 0;
+      req.on('data', (d) => { tam += d.length; if (tam > 5_000_000) req.destroy(); else partes.push(d); });
+      req.on('end', () => { esperando.get(m[1])?.(Buffer.concat(partes)); res.writeHead(204).end(); });
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  srv.on('error', (e) => log(`alto-falante: não abriu a porta ${config.altoFalantePorta} (${e.message})`));
+  srv.listen(config.altoFalantePorta, '0.0.0.0', () => {
+    for (const u of enderecos()) log(`alto-falante: abra no notebook → ${u}`);
+    fs.writeFileSync(path.join(DADOS, 'LINK-DO-NOTEBOOK.txt'), enderecos().join('\n') + '\n');
+  });
+}

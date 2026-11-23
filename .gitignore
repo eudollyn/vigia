@@ -1,0 +1,11 @@
+# Segredos e dados pessoais: nunca vão para o GitHub
+.env
+dados/
+
+# Dependências
+node_modules/
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log

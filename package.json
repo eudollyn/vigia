@@ -1,0 +1,39 @@
+{
+  "name": "vigia",
+  "version": "1.0.0",
+  "description": "Assistente de voz que lê WhatsApp e e-mail assim que chegam, resume com IA, avisa no Windows e fala em voz alta. Responde e envia mensagens por voz, com confirmação.",
+  "type": "module",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "teste-aviso": "node src/teste-aviso.js",
+    "teste-microfone": "node src/teste-microfone.js",
+    "instalar-inicio": "powershell -ExecutionPolicy Bypass -File scripts/instalar-inicio.ps1",
+    "remover-inicio": "powershell -ExecutionPolicy Bypass -File scripts/instalar-inicio.ps1 -Remover"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "imapflow": "1.7.8",
+    "mailparser": "3.7.5",
+    "msedge-tts": "2.1.1",
+    "pino": "9.14.0",
+    "qrcode": "1.5.4",
+    "qrcode-terminal": "0.12.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "whatsapp",
+    "email",
+    "imap",
+    "voz",
+    "assistente",
+    "gemini",
+    "windows",
+    "tts",
+    "pt-br"
+  ]
+}
