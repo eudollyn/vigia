@@ -518,6 +518,8 @@ function iniciarComandos(){
     // "silencia a Ana (por 2 horas)" / "volta a avisar a Ana"
     else if(/^\W*(pode\s+)?(volta|voltar|volte)\s+a\s+(avisar|falar)\s+\S|^\W*(tira|tirar|tire)\s+o\s+silencio\s+\S|^\W*(dessilencia|dessilenciar|desmuta|desmutar)\s+\S/.test(s)) c='dessilenciar';
     else if(/^\W*(pode\s+)?(silencia|silencie|silenciar|pausa|pause|pausar|muta|mute|mutar)\s+\S/.test(s)) c='silenciar';
+    // "encaminha essa mensagem para a Ana" / "encaminha a última mensagem do Bruno pra Ana"
+    else if(/^\W*(pode\s+)?(encaminh\w*|repass\w*|reenvi\w*)\b/.test(s)) c='encaminhar';
     // perguntas sobre as mensagens: "o que a Ana falou sobre o carro?", "qual o valor que o Bruno passou?"
     else if(/^\W*(o que|oque|qual|quais|quanto|quantos|quantas|quando|onde|quem|que horas|que dia)\b.*\b(falou|falaram|disse|disseram|mandou|mandaram|passou|passaram|pediu|pediram|perguntou|comentou|marcou|enviou|combinou|avisou|respondeu|escreveu|contou|explicou)\b/.test(s)
          || /^\W*(procura|procure|pesquisa|pesquise|busca|busque)\b.*\b(mensage\w*|conversa|whats\w*|zap|e-?mails?|historico)\b/.test(s)) c='perguntar';

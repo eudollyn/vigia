@@ -413,6 +413,50 @@ async function voltarAvisar(t) {
   return naFila(() => dizer(`Pronto, volto a avisar ${quem}.${qtd ? ` Nesse tempo, chegaram ${qtd === 1 ? 'uma mensagem' : `${qtd} mensagens`}. Diga leia a última mensagem de ${quem} para ouvir.` : ''}`));
 }
 
+// ---------- encaminhar ----------
+// "encaminha essa mensagem para o Ana" (depois do aviso / do "leia"), "encaminha a última mensagem do Bruno para o Ana".
+// Reenvia o ORIGINAL com o selo "Encaminhada" do WhatsApp (texto, áudio, foto, documento), só depois do seu "pode".
+export function entenderEncaminhar(t) {
+  const s = tirarAcento(t).replace(/[.,!?;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const p = /\b(para|pra|pro|pros|pras)\s+(.+)$/.exec(s);
+  const para = p ? nomeDoComando(p[2].replace(/^(o|a|os|as)\s+/, '')) : '';
+  const antes = p ? s.slice(0, p.index) : s;
+  const o = /\b(?:mensage\w*|audio|foto|video|arquivo|documento)\s+d[oa]s?\s+(.+)$/.exec(antes);
+  const de = o && !/^(essa|esse|esta|este)\b/.test(o[1]) ? nomeDoComando(o[1].replace(/^(o|a)\s+/, '')) : '';
+  return { de, para };
+}
+/** O fluxo inteiro (já dentro da fila de voz). itemDoAviso = a mensagem do aviso, quando vem da janela "leia/responda". */
+export async function encaminharFluxo(t, itemDoAviso) {
+  const { encaminharPeloWhatsApp, ultimoAviso } = await import('./avisos.js');
+  const { mensagensOriginais } = await import('./whatsapp.js');
+  const { perguntar, confirmou } = await import('./conversa.js');
+  const encaminhar = encaminharPeloWhatsApp();
+  if (!encaminhar) return dizer('O WhatsApp ainda não está conectado.');
+  const { de, para } = entenderEncaminhar(t);
+  let item = itemDoAviso;
+  if (de) {
+    const c = await acharConversa(de);
+    if (!c) return dizer(`Não achei ${de} nos seus contatos.`);
+    item = ultimaDoHistorico(c.ids);
+  }
+  if (!item) item = ultimoAviso();
+  if (!item || item.canal !== 'whatsapp') return dizer('Não tenho mensagem de WhatsApp recente para encaminhar.');
+  const originais = mensagensOriginais(item.msgIds);
+  if (!originais.length) return dizer('Não tenho mais o original dessa mensagem, então não consigo encaminhar. Só as que chegaram depois da última atualização do Vigia.');
+  const destino = await escolherDestino(para);
+  if (!destino) return;
+  const quem = limparNome(item.grupo ? `${item.de}, do grupo ${item.grupo}` : item.de);
+  const praQuem = limparNome(destino.grupo ? `o grupo ${destino.de}` : destino.de);
+  const n = originais.length;
+  const resp = await perguntar(dizer, `Encaminho ${n > 1 ? `as ${n} mensagens` : 'a mensagem'} de ${quem} para ${praQuem}?`, 'confirmação');
+  if (!confirmou(resp)) { log(`encaminhar: desistiu ("${resp}")`); return dizer('Tudo bem, não encaminhei.'); }
+  try {
+    await encaminhar(destino.jid, originais);
+    log(`ENCAMINHADO para ${praQuem}: ${n} mensagem(ns) de ${quem}`);
+    return dizer(`Encaminhado para ${praQuem}.`);
+  } catch (e) { log(`encaminhar: falhou (${e.message})`); return dizer('Não consegui encaminhar agora. Tenta de novo daqui a pouco.'); }
+}
+
 // "O que o Ana falou sobre o carro?": procura nas mensagens dos últimos 7 dias e responde falando
 async function perguntarAoHistorico(t) {
   const { perguntarHistorico } = await import('./historico.js');
@@ -491,6 +535,7 @@ export function iniciarComandos(af) {
     if (c === 'repete') return repetir();
     if (c === 'abrir-link') return abrirUltimoLink(t);
     if (c === 'perguntar') return perguntarAoHistorico(t);
+    if (c === 'encaminhar' && config.responderVoz) return umaConversa('encaminhar', () => naFila(() => encaminharFluxo(t)));
     if (c === 'silenciar') return silenciarPessoa(t);
     if (c === 'dessilenciar') return voltarAvisar(t);
     if (c === 'ouca-de') return ouvirAudioDe(t);

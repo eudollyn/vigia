@@ -40,6 +40,8 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | 💻 | **Página do Vigia** | Abre sozinha no navegador do PC: fala, ouve os comandos e mostra os avisos. Quer usar de outro aparelho (notebook, tablet)? Também dá. |
 | 🎵 | **Modo música** | Pausa os comandos contínuos, aumenta a voz e adapta o microfone ao som da música. |
 | 🔒 | **Contatos privados** | Para quem você escolher, ele diz só "Mensagem de Fulano", sem ler o conteúdo. |
+| ↪️ | **Encaminha por voz** | *"Encaminha essa mensagem para a Bia"*: reenvia o original (texto, áudio, foto) com o selo **Encaminhada**, depois da sua confirmação. |
+| 🔕 | **Respeita o "silenciar" do WhatsApp** | Conversa silenciada no celular aparece só na tela, sem voz. Quando o silêncio acaba (8 h, 1 semana), volta a avisar. |
 | 📦 | **Respeita as arquivadas** | Conversas arquivadas no WhatsApp ficam em silêncio. Arquivou ou desarquivou no celular, ele atualiza na hora. |
 | 🔤 | **Pronúncia certa** | Ensine como falar nomes difíceis (`Thalyta=Talíta`). Só a voz muda, a tela continua igual. |
 | 💸 | **Econômico** | Grupos de baixa prioridade não gastam a cota da IA: só entram no resumo de hora em hora. |
@@ -159,6 +161,7 @@ A página tem céu animado, uma esfera que reage à voz, cartões com os último
 | **"Abra o link"** / **"Abra o link que a Ana mandou"** | Abre o link no navegador do PC. |
 | **"O que a Ana falou sobre o carro?"** / **"Procura nas mensagens o endereço da festa"** | Procura nas mensagens dos últimos 7 dias e responde falando (quem falou e quando). |
 | **"Me lembra disso às três"** / **"…daqui a meia hora"** | Lembrete com a última mensagem avisada: de quem era e o que dizia. |
+| **"Encaminha essa mensagem para a Bia"** / **"…a última mensagem do Bruno para a Bia"** | Encaminha o original com o selo "Encaminhada" (pergunta antes). |
 | **"Que horas são?"** | Diz a hora e a data. |
 | **"Vai chover hoje?"** / **"Como está o tempo?"** | Temperatura de agora e previsão do dia. |
 | **"Lê meus e-mails de hoje"** | Resumo dos e-mails de pessoas que chegaram hoje (sem propaganda). |

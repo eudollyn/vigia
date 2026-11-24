@@ -12,7 +12,7 @@ import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, DADOS } from './config.js';
-import { log, notificar, registrarEnvio, registrarEnvioAudio, marcarConversa, conversaAtiva } from './avisos.js';
+import { log, notificar, registrarEnvio, registrarEnvioAudio, registrarEncaminhar, marcarConversa, conversaAtiva } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
 
@@ -68,6 +68,23 @@ function marcarArquivada(id, sim) {
 }
 const estaArquivada = (ids) => ids.some((i) => arquivadas.has(jidNormalizedUser(i)));
 export const totalArquivadas = () => arquivadas.size;
+
+// ---------- conversas SILENCIADAS no WhatsApp: a mensagem aparece só na tela, sem voz nem notificação ----------
+// O WhatsApp sincroniza o "silenciar" entre os aparelhos: muteEndTime = até quando (ms), -1 = "sempre", null = sem silêncio.
+const ARQ_SILENCIADAS = path.join(DADOS, 'silenciadas-whatsapp.json');
+let silenciadasZap = {};
+try { silenciadasZap = JSON.parse(fs.readFileSync(ARQ_SILENCIADAS, 'utf8')); } catch {}
+let salvarSilT;
+function marcarSilenciada(id, ate) {
+  if (!id) return;
+  const n = jidNormalizedUser(id);
+  const antes = silenciadasZap[n];
+  const valor = ate && (Number(ate) < 0 || Number(ate) > Date.now()) ? Number(ate) : null;
+  if (valor) silenciadasZap[n] = valor; else delete silenciadasZap[n];
+  if (antes !== silenciadasZap[n]) { clearTimeout(salvarSilT); salvarSilT = setTimeout(() => fs.writeFileSync(ARQ_SILENCIADAS, JSON.stringify(silenciadasZap)), 2000); }
+}
+/** A conversa está silenciada no WhatsApp agora? (o silêncio de 8 h / 1 semana acaba sozinho) */
+const estaSilenciadaNoZap = (ids) => ids.some((i) => { const v = silenciadasZap[jidNormalizedUser(i)]; return v && (v < 0 || v > Date.now()); });
 
 // ---------- áudios recebidos: baixa e transcreve com o Gemini ----------
 // Os últimos áudios ficam guardados (só na memória, 1 hora) para o "ouça o áudio" — inclusive os que não deu para transcrever.
@@ -223,6 +240,33 @@ export function buscarDestino(nomeFalado) {
   return { tipo: 'varios', opcoes: melhores.slice(0, 4).map((x) => x.destino) };
 }
 
+// Mensagens RECEBIDAS (o original completo, últimas 30 por conversa), em disco: é o que o "encaminhe essa mensagem"
+// reenvia com o selo "Encaminhada" (também áudio, foto e documento).
+const ARQ_RECEBIDAS = path.join(DADOS, 'recebidas.json');
+let recebidas = { msgs: {}, porChat: {} };
+try { recebidas = { msgs: {}, porChat: {}, ...JSON.parse(fs.readFileSync(ARQ_RECEBIDAS, 'utf8')) }; } catch {}
+let tRecebidas;
+function guardarRecebida(jid, msg) {
+  try {
+    if (!msg?.key?.id || !msg.message) return;
+    recebidas.msgs[msg.key.id] = Buffer.from(proto.WebMessageInfo.encode(msg).finish()).toString('base64');
+    const lista = (recebidas.porChat[jid] ||= []);
+    lista.push(msg.key.id);
+    while (lista.length > 30) delete recebidas.msgs[lista.shift()];
+    clearTimeout(tRecebidas);
+    tRecebidas = setTimeout(() => { try { fs.writeFileSync(ARQ_RECEBIDAS, JSON.stringify(recebidas)); } catch {} }, 2000);
+  } catch (e) { log(`WhatsApp: não guardei a mensagem original (${e.message})`); }
+}
+/** ids de mensagens → os originais (na ordem); os que não existirem mais são ignorados. */
+export function mensagensOriginais(ids) {
+  const out = [];
+  for (const id of ids || []) {
+    const b64 = recebidas.msgs[id];
+    if (b64) try { out.push(proto.WebMessageInfo.decode(Buffer.from(b64, 'base64'))); } catch {}
+  }
+  return out;
+}
+
 // Mensagens que o Vigia enviou (últimas 200), gravadas em disco. Quando um aparelho não consegue abrir uma
 // delas (no celular aparece "Aguardando mensagem"), ele pede reenvio e o Baileys busca aqui (getMessage).
 const ARQ_ENVIADAS = path.join(DADOS, 'enviadas.json');
@@ -268,7 +312,8 @@ export function iniciarWhatsApp(aoChegar) {
 
   function enfileirar(chave, dados, linha) {
     let b = buffers.get(chave);
-    if (!b) { b = { ...dados, linhas: [], inicio: Date.now() }; buffers.set(chave, b); }
+    if (!b) { b = { ...dados, linhas: [], inicio: Date.now(), ids: new Set([chave]) }; buffers.set(chave, b); }
+    for (const i of linha.ids || []) b.ids.add(i);
     b.linhas.push(linha);
     clearTimeout(b.t);
     // espera a pessoa parar de mandar (mensagens picadas viram um aviso só), mas no máximo 1 minuto
@@ -279,7 +324,7 @@ export function iniciarWhatsApp(aoChegar) {
       buffers.delete(chave);
       const texto = b.grupo ? b.linhas.map((l) => `${l.autor}: ${l.texto}`).join('\n') : b.linhas.map((l) => l.texto).join('\n');
       const de = b.grupo ? [...new Set(b.linhas.map((l) => l.autor))].slice(0, 3).join(', ') : b.de;
-      aoChegar({ canal: 'whatsapp', jid: chave, de, grupo: b.grupo, texto, quantidade: b.linhas.length, ...(b.atrasada ? { atrasada: true } : {}) });
+      aoChegar({ canal: 'whatsapp', jid: chave, de, grupo: b.grupo, texto, quantidade: b.linhas.length, msgIds: b.linhas.map((l) => l.msgId).filter(Boolean), ...(estaSilenciadaNoZap([...b.ids]) ? { silenciadaNoZap: true } : {}), ...(b.atrasada ? { atrasada: true } : {}) });
     }, espera);
   }
 
@@ -307,6 +352,10 @@ export function iniciarWhatsApp(aoChegar) {
     // Única forma de envio: a resposta ditada e confirmada por voz (conversa.js).
     registrarEnvio(async (jid, texto) => { guardarEnviada(await sock.sendMessage(jid, { text: texto })); });
     // áudio de voz (o "de bolinha azul"): OGG/Opus mono, ptt = gravado na hora
+    // encaminhar = o "forward" do WhatsApp: a mensagem chega com o selo "Encaminhada", igual ao feito no celular
+    registrarEncaminhar(async (jid, originais) => {
+      for (const m of originais) guardarEnviada(await sock.sendMessage(jid, { forward: m }));
+    });
     registrarEnvioAudio(async (jid, ogg, segundos) => {
       // com a "onda sonora" calculada (as barrinhas do áudio de voz)
       const m = await sock.sendMessage(jid, { audio: ogg, mimetype: 'audio/ogg; codecs=opus', ptt: true, seconds: segundos, waveform: await calcularOnda(ogg) });
@@ -318,7 +367,13 @@ export function iniciarWhatsApp(aoChegar) {
     sock.ev.on('contacts.update', (lista) => { for (const c of lista) if (c.id) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); });
     sock.ev.on('groups.update', (lista) => { for (const g of lista) if (g.id && g.subject) nomesGrupo[g.id] = g.subject; });
     // arquivar/desarquivar no celular (e a lista inicial ao conectar)
-    const lerChats = (lista) => { for (const c of lista || []) if (c?.id && typeof c.archived === 'boolean') marcarArquivada(c.id, c.archived); };
+    const lerChats = (lista) => {
+      for (const c of lista || []) {
+        if (!c?.id) continue;
+        if (typeof c.archived === 'boolean') marcarArquivada(c.id, c.archived);
+        if ('muteEndTime' in c) marcarSilenciada(c.id, c.muteEndTime); // silenciou / tirou o silêncio no celular
+      }
+    };
     sock.ev.on('chats.upsert', lerChats);
     sock.ev.on('chats.update', lerChats);
     sock.ev.on('messaging-history.set', ({ chats }) => lerChats(chats));
@@ -358,12 +413,16 @@ export function iniciarWhatsApp(aoChegar) {
         // então refazemos essa coleção do zero como sincronização normal; assim cada "arquivada" vira um chats.update.
         setTimeout(async () => {
           try {
-            await state.keys.set({ 'app-state-sync-version': { regular_low: null } });
-            await sock.resyncAppState(['regular_low'], false);
+            // regular_low = arquivadas; regular_high = silenciadas (refeitas do zero para virem todas)
+            await state.keys.set({ 'app-state-sync-version': { regular_low: null, regular_high: null } });
+            await sock.resyncAppState(['regular_low', 'regular_high'], false);
           } catch (e) { log(`WhatsApp: não consegui ler as arquivadas (${e.message})`); }
           setTimeout(() => {
             const nomes = [...arquivadas].map((id) => gruposTodos[id] || nomesGrupo[id] || contatos[id]?.name || contatos[id]?.notify || id.split('@')[0]);
             log(`WhatsApp: ${arquivadas.size} conversas arquivadas (sem aviso): ${nomes.join(' · ')}`);
+            const sil = Object.keys(silenciadasZap).filter((id) => estaSilenciadaNoZap([id]));
+            const nomesSil = sil.map((id) => gruposTodos[id] || nomesGrupo[id] || contatos[id]?.name || contatos[id]?.notify || id.split('@')[0]);
+            log(`WhatsApp: ${sil.length} conversas silenciadas no WhatsApp (só na tela): ${nomesSil.join(' · ')}`);
           }, 3000);
         }, 6000);
       }
@@ -409,17 +468,18 @@ export function iniciarWhatsApp(aoChegar) {
             continue;
           }
           texto = await transcreverAudio(msg, texto);
+          guardarRecebida(jid, msg); // o original, para "encaminhe essa mensagem" (com o selo Encaminhada)
           const atrasada = Number(msg.messageTimestamp || 0) < agoraS - 30; // chegou antes do Vigia ligar
           if (atrasada) log(`WhatsApp: recuperada mensagem de quando o Vigia estava fora (${new Date(Number(msg.messageTimestamp) * 1000).toLocaleTimeString('pt-BR')})`);
           if (isJidGroup(jid)) {
             const autorJid = msg.key.participantAlt || msg.key.participant || '';
-            enfileirar(jid, { grupo: await nomeGrupo(sock, jid), atrasada }, { autor: nomeDe(autorJid, msg.pushName), texto });
+            enfileirar(jid, { grupo: await nomeGrupo(sock, jid), atrasada }, { autor: nomeDe(autorJid, msg.pushName), texto, msgId: msg.key.id, ids: idsChat });
           } else {
             const remet = msg.key.remoteJidAlt || jid;
             if (msg.pushName) { const id = jidNormalizedUser(remet); contatos[id] = { ...contatos[id], notify: msg.pushName }; salvarContatos(); }
             const nome = nomeDe(remet, msg.pushName);
             recebeu(idsChat, nome);
-            enfileirar(jid, { de: nome, atrasada }, { texto });
+            enfileirar(jid, { de: nome, atrasada }, { texto, msgId: msg.key.id, ids: idsChat });
           }
         } catch (e) { log(`WhatsApp: erro ao ler mensagem (${e.message})`); }
       }

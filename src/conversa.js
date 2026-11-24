@@ -96,6 +96,8 @@ export const desistiu = (t) => {
 const PEDIU_LEITURA = /\b(leia|le|ler|leiam|lendo|o que (ela |ele )?(diz|disse|falou|fala))\b/;
 // "ouça o áudio", "ouve o áudio", "toca o áudio", "escuta o áudio"…
 const PEDIU_AUDIO = /\b(ouca|ouve|ouvir|ouça|escuta|escute|escutar|toca|toque|tocar|reproduz|reproduza)\b.*\baudio\b|^\W*(ouca|ouve|escuta|toca|toque)\W*$/;
+// "encaminha essa mensagem para o Ana", "repassa isso pro grupo", "reenvia pro Bruno"
+const PEDIU_ENCAMINHAR = /^\W*(pode\s+)?(encaminh\w*|repass\w*|reenvi\w*)\b/;
 // "me lembra disso às três", "me lembra de responder daqui a uma hora"
 const PEDIU_LEMBRETE = /^\W*(me\s+)?(lembra|lembre|lembrar|cria um lembrete|lembrete)\b/;
 async function lembrarDisso(fala, item, dizer) {
@@ -124,6 +126,8 @@ export async function aposAviso(item, { dizer, enviar }) {
   if (podeResponder && PEDIU_RESPOSTA.test(p)) return talvezResponder(item, { dizer, enviar, pedido });
   // "me lembra disso às três": lembrete com esta mensagem
   if (PEDIU_LEMBRETE.test(p)) return lembrarDisso(pedido, item, dizer);
+  // "encaminha essa mensagem para o Ana"
+  if (PEDIU_ENCAMINHAR.test(p)) return (await import('./comandos.js')).encaminharFluxo(pedido, item);
   // "abra o link": abre no navegador do PC
   if (PEDIU_LINK.test(p)) {
     const { acharLink, abrirLink } = await import('./avisos.js');
@@ -160,6 +164,7 @@ export async function aposAviso(item, { dizer, enviar }) {
     depois = await ouvirTexto({ esperaMs: config.janelaMs, silencioMs: 900, maxMs: 15000 }, 'responda?');
   }
   if (depois && PEDIU_LEMBRETE.test(semAcento(depois).toLowerCase())) return lembrarDisso(depois, item, dizer);
+  if (depois && PEDIU_ENCAMINHAR.test(semAcento(depois).toLowerCase())) return (await import('./comandos.js')).encaminharFluxo(depois, item);
   if (depois && PEDIU_LINK.test(semAcento(depois).toLowerCase())) {
     const { acharLink, abrirLink } = await import('./avisos.js');
     const url = acharLink(item.texto);

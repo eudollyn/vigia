@@ -167,6 +167,9 @@ export const enviarPeloWhatsApp = () => enviarWhatsApp;
 let enviarAudioWhatsApp = null;
 export const registrarEnvioAudio = (fn) => { enviarAudioWhatsApp = fn; };
 export const enviarAudioPeloWhatsApp = () => enviarAudioWhatsApp;
+let encaminharWhatsApp = null;
+export const registrarEncaminhar = (fn) => { encaminharWhatsApp = fn; };
+export const encaminharPeloWhatsApp = () => encaminharWhatsApp;
 
 // Último aviso de WhatsApp (para o comando "responda" dito a qualquer momento)
 let ultimoWhats = null;
@@ -203,6 +206,14 @@ export async function avisar(item) {
   if (item.prioridade === 'silencio') return; // newsletter/anúncio por e-mail: só histórico
   if (item.prioridade === 'baixa') {
     baixa.push({ origemCurta: item.grupo || item.de });
+    return;
+  }
+  // conversa silenciada no próprio WhatsApp: só na tela (sem voz e sem notificação), mas "leia" ainda funciona
+  if (item.silenciadaNoZap) {
+    mostrarNaTela(item);
+    const nome = semEmoji(item.de);
+    ultimoWhats = ultimoQualquer = { quando: Date.now(), item: { ...item, de: nome, grupo: item.grupo && semEmoji(item.grupo), privado: ehPrivado(item) } };
+    log(`aviso: ${item.grupo ? `grupo ${semEmoji(item.grupo)}` : nome} está silenciado no WhatsApp (só na tela)`);
     return;
   }
   if (item.atrasada) return guardarAtrasada(item, icone, origem);
@@ -273,7 +284,7 @@ function juntar(itens) {
   const u = itens[itens.length - 1];
   if (itens.length === 1) return u;
   const qtd = itens.reduce((s, i) => s + (i.quantidade || 1), 0);
-  return { ...u, quantidade: qtd, texto: itens.map((i) => i.texto).join('\n'),
+  return { ...u, quantidade: qtd, texto: itens.map((i) => i.texto).join('\n'), msgIds: itens.flatMap((i) => i.msgIds || []),
     resumo: itens.map((i) => i.resumo).filter(Boolean).join(' '), fala: itens.map((i) => i.fala || i.resumo).filter(Boolean).join(' ') };
 }
 function mostrarNaTela(item) {
