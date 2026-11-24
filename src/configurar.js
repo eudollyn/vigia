@@ -73,7 +73,7 @@ function linkNotebook(porta) {
   const arq = path.join(DADOS, 'alto-falante-chave.txt');
   let chave = ''; try { chave = fs.readFileSync(arq, 'utf8').trim(); } catch {}
   if (!chave) { chave = crypto.randomBytes(9).toString('base64url'); fs.writeFileSync(arq, chave); }
-  return ipsLocais().map((ip) => `http://${ip}:${porta}/?k=${chave}`);
+  return { local: `http://localhost:${porta}/?k=${chave}`, rede: ipsLocais().map((ip) => `http://${ip}:${porta}/?k=${chave}`) };
 }
 const temFfmpeg = () => spawnSync('ffmpeg', ['-version'], { windowsHide: true }).status === 0;
 function estado() {
@@ -82,7 +82,7 @@ function estado() {
   for (const s of SEGREDOS) { valores[s + '_DEFINIDA'] = Boolean(v[s]); delete valores[s]; }
   return {
     valores, envExiste: fs.existsSync(ENV), vigiaRodando: vigiaRodando(), whatsapp: whatsappSalvo(), ffmpeg: temFfmpeg(),
-    node: process.version, notebook: linkNotebook(Number(v.ALTO_FALANTE_PORTA) || 8765), inicioWindows: tarefaExiste(),
+    node: process.version, pagina: linkNotebook(Number(v.ALTO_FALANTE_PORTA) || 8765), inicioWindows: tarefaExiste(),
   };
 }
 function tarefaExiste() {

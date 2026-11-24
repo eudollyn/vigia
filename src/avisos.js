@@ -250,6 +250,18 @@ export async function avisar(item) {
 // Depois de falar "Mensagem de Ana", as próximas do Ana ficam só na tela por PAUSA_MESMA_PESSOA_MIN (5 min).
 // No fim da pausa, se chegou mais coisa: "Ana mandou mais 6 mensagens." O "leia" lê tudo o que juntou.
 const falouDe = new Map();    // jid → quando foi o último aviso FALADO dessa conversa
+// Conversa ativa: você mandou mensagem nela nos últimos 10 min. Aí não tem pausa: cada resposta é avisada.
+const voceMandou = new Map(); // jid → quando você mandou a última mensagem
+export function marcarConversa(ids) {
+  const t = Date.now();
+  for (const id of ids) {
+    voceMandou.set(id, t);
+    // você respondeu durante a pausa: já viu as mensagens, então não precisa do "mandou mais N mensagens"
+    const g = seguradas.get(id);
+    if (g) { clearTimeout(g.timer); seguradas.delete(id); }
+  }
+}
+export const conversaAtiva = (jid) => Date.now() - (voceMandou.get(jid) || 0) < 10 * 60_000;
 const seguradas = new Map();  // jid → { itens: [...], timer }
 const ARQ_SIL = path.join(DADOS, 'silenciados.json');
 let silenciados = [];         // { ids: [...], nome, ate, qtd }
@@ -284,9 +296,9 @@ function seguraAviso(item) {
     log(`aviso: ${nome} está silenciado (só na tela)`);
     return true;
   }
-  // 2) pausa depois de um aviso falado da mesma conversa
+  // 2) pausa depois de um aviso falado da mesma conversa (mas NÃO se você está conversando com a pessoa)
   const ult = falouDe.get(item.jid);
-  if (ult && Date.now() - ult < config.pausaPessoaMs) {
+  if (ult && Date.now() - ult < config.pausaPessoaMs && !conversaAtiva(item.jid)) {
     let g = seguradas.get(item.jid);
     if (!g) {
       g = { itens: [] }; seguradas.set(item.jid, g);

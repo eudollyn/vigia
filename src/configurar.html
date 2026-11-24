@@ -370,34 +370,51 @@ kbd{font:600 13px "Inter Tight";padding:2px 8px;border-radius:7px;background:var
       <div class="cartao" id="cidadeEscolhida" style="margin-top:16px"></div>
     </section>
 
-    <!-- 8 · notebook -->
-    <section data-passo="notebook" data-titulo="Notebook (opcional)">
-      <span class="tag">Passo 8 · opcional</span>
-      <h1>Notebook como alto-falante</h1>
-      <p class="lead">O PC fica longe ou não tem caixa de som? Abra uma página no <b>Chrome do notebook</b> (mesma rede Wi-Fi): a voz toca nele e você fala pelo microfone dele. Não instala nada.</p>
+    <!-- 8 · página do Vigia -->
+    <section data-passo="notebook" data-titulo="Página do Vigia">
+      <span class="tag">Passo 8</span>
+      <h1>Onde você vai usar o Vigia?</h1>
+      <p class="lead">A <b>página do Vigia</b> é onde ele fala com você, ouve os comandos de voz e mostra os avisos. Ela abre no navegador: neste PC mesmo ou em outro aparelho da casa.</p>
       <div class="grade g2">
-        <label class="campo">Onde a voz toca
-          <select id="SAIDA_VOZ"><option value="notebook">No notebook (se a página estiver aberta)</option><option value="pc">Sempre no PC</option><option value="ambos">Nos dois</option></select></label>
-        <label class="campo">De onde vem a sua voz
-          <select id="MICROFONE_ORIGEM"><option value="notebook">Microfone do notebook</option><option value="pc">Microfone do PC</option></select></label>
+        <label class="opcao"><input type="radio" name="ONDE" value="pc"><div class="t">💻 Neste PC <span class="selo">recomendado</span></div><div class="d">Tudo aqui: caixa de som e microfone deste computador. A página abre sozinha quando o Vigia liga.</div></label>
+        <label class="opcao"><input type="radio" name="ONDE" value="outro"><div class="t">📱 Em outro aparelho</div><div class="d">Um notebook ou tablet na mesma rede Wi-Fi vira o alto-falante e o microfone. Bom quando o PC fica longe.</div></label>
       </div>
-      <h2>1. Abra este link no Chrome do notebook</h2>
-      <div id="linksNote"></div>
-      <h2>2. Libere o microfone (uma vez só)</h2>
-      <p class="peq">O Chrome só libera microfone em sites seguros (https). Para a página do Vigia, faça assim:</p>
-      <ol class="passinhos">
-        <li><span>No notebook, abra:</span></li>
-      </ol>
-      <div class="copiar"><span>chrome://flags/#unsafely-treat-insecure-origin-as-secure</span><button class="btn peq" data-copiar="chrome://flags/#unsafely-treat-insecure-origin-as-secure">Copiar</button></div>
-      <ol class="passinhos" start="2" style="counter-reset:p 1">
-        <li><span>Mude para <b>Enabled</b> e cole na caixa o endereço do PC:</span></li>
-      </ol>
-      <div id="origemNote"></div>
-      <ol class="passinhos" style="counter-reset:p 2">
-        <li><span>Clique em <b>Relaunch</b> e abra o link do passo 1. Clique em <b>Ativar som e microfone</b>.</span></li>
-        <li><span>Se o Windows do PC perguntar, permita o <b>Node.js</b> na rede privada.</span></li>
-      </ol>
-      <div class="dica" style="margin-top:18px">💤 <b>Bônus:</b> com o Vigia ligado, o notebook pode até <b>ligar o PC</b> quando você abrir a tampa (Wake-on-LAN). Veja "Ligar o PC abrindo o notebook" no README.</div>
+
+      <div id="ondePc">
+        <h2>Pronto, não precisa fazer nada</h2>
+        <p class="peq">Quando o Vigia ligar, a página abre sozinha no navegador. Clique em <b>Ativar som e microfone</b> uma vez e permita o microfone quando o navegador perguntar. Use o <b>Chrome</b> ou o <b>Edge</b>: os comandos de voz usam o reconhecimento de voz deles.</p>
+        <p class="peq">Se fechar a página sem querer, abra de novo por este endereço (ele também fica salvo em <kbd>dados/LINK-DA-PAGINA.txt</kbd>):</p>
+        <div id="linkLocal"></div>
+      </div>
+
+      <div id="ondeOutro">
+        <h2>1. Abra este link no Chrome do outro aparelho</h2>
+        <div id="linksNote"></div>
+        <h2>2. Libere o microfone (uma vez só)</h2>
+        <p class="peq">Fora deste PC o Chrome só libera microfone em sites seguros (https). Para a página do Vigia, faça assim no outro aparelho:</p>
+        <ol class="passinhos">
+          <li><span>Abra:</span></li>
+        </ol>
+        <div class="copiar"><span>chrome://flags/#unsafely-treat-insecure-origin-as-secure</span><button class="btn peq" data-copiar="chrome://flags/#unsafely-treat-insecure-origin-as-secure">Copiar</button></div>
+        <ol class="passinhos" style="counter-reset:p 1">
+          <li><span>Mude para <b>Enabled</b> e cole na caixa o endereço deste PC:</span></li>
+        </ol>
+        <div id="origemNote"></div>
+        <ol class="passinhos" style="counter-reset:p 2">
+          <li><span>Clique em <b>Relaunch</b>, abra o link do passo 1 e clique em <b>Ativar som e microfone</b>.</span></li>
+          <li><span>Se o Windows deste PC perguntar, permita o <b>Node.js</b> na rede privada.</span></li>
+        </ol>
+        <div class="dica" style="margin-top:18px">💤 <b>Bônus:</b> com um notebook, dá até para <b>ligar o PC</b> quando você abrir a tampa (Wake-on-LAN). Veja "Ligar o PC abrindo o notebook" no README.</div>
+      </div>
+
+      <details style="margin-top:22px"><summary class="peq" style="cursor:pointer">Ajustes avançados</summary>
+        <div class="grade g2" style="margin-top:12px">
+          <label class="campo">Onde a voz toca
+            <select id="SAIDA_VOZ"><option value="notebook">Na página (se estiver aberta), senão no PC</option><option value="pc">Sempre pelo PC, sem página</option><option value="ambos">Nos dois</option></select></label>
+          <label class="campo">De onde vem a sua voz
+            <select id="MICROFONE_ORIGEM"><option value="notebook">Microfone da página</option><option value="pc">Microfone do PC (precisa do ffmpeg)</option></select></label>
+        </div>
+      </details>
     </section>
 
     <!-- 9 · comandos -->
@@ -511,6 +528,7 @@ function coletar() {
   V.SILENCIO = $('#usarSilencio').checked ? `${$('#silDe').value}-${$('#silAte').value}` : '';
   for (const c of $$('[data-chips]')) V[c.dataset.chips] = lerChips(c).join(c.dataset.sep);
   V.SAIDA_VOZ = $('#SAIDA_VOZ').value; V.MICROFONE_ORIGEM = $('#MICROFONE_ORIGEM').value;
+  V.ABRIR_PAGINA = $('input[name=ONDE]:checked')?.value === 'outro' ? '0' : '1';
 }
 
 /* ---------- voz (prévia) ---------- */
@@ -724,8 +742,12 @@ async function mostrarCidade() {
 }
 
 /* ---------- 8 · notebook ---------- */
+const mostrarOnde = () => { const pc = $('input[name=ONDE]:checked')?.value !== 'outro'; $('#ondePc').style.display = pc ? '' : 'none'; $('#ondeOutro').style.display = pc ? 'none' : ''; };
+$$('input[name=ONDE]').forEach((r) => r.onchange = mostrarOnde);
 function mostrarNotebook() {
-  const links = E.notebook || [];
+  const local = E.pagina?.local || '';
+  $('#linkLocal').innerHTML = local ? `<div class="copiar"><span>${esc(local)}</span><button class="btn peq" data-copiar="${esc(local)}">Copiar</button></div><p class="peq">Esse link tem uma chave secreta. Não compartilhe.</p>` : '';
+  const links = E.pagina?.rede || [];
   $('#linksNote').innerHTML = links.length ? links.map((l) => `<div class="copiar"><span>${esc(l)}</span><button class="btn peq" data-copiar="${esc(l)}">Copiar</button></div>`).join('') + '<p class="peq">Esse link tem uma chave secreta: só quem tem o link acessa. Não compartilhe.</p>'
     : '<div class="dica aviso">Não achei a rede local deste PC. Conecte o PC ao Wi-Fi ou cabo e abra o assistente de novo.</div>';
   $('#origemNote').innerHTML = links.map((l) => { const o = l.split('/?')[0]; return `<div class="copiar"><span>${esc(o)}</span><button class="btn peq" data-copiar="${esc(o)}">Copiar</button></div>`; }).join('');
@@ -784,6 +806,7 @@ async function montarResumo() {
   const voz = VOZES.find((v) => v[0] === val('VOZ_MICROSOFT', 'pt-BR-FranciscaNeural'));
   itens.push(val('VOZ', '1') === '0' ? ['pula', '🔊', 'Voz', 'Desligada (só notificação)', 5] : ['ok', '🔊', 'Voz', `${voz ? voz[1] : 'Francisca'}${val('SAUDACAO_NOME') ? ' · te chama de ' + esc(val('SAUDACAO_NOME')) : ''}`, 5]);
   itens.push(['ok', '📍', 'Cidade', esc(val('CLIMA_CIDADE', 'São Paulo')), 7]);
+  itens.push(['ok', '🖥️', 'Página do Vigia', val('ABRIR_PAGINA', '1') === '0' ? 'Em outro aparelho da rede' : 'Neste PC (abre sozinha)', 8]);
   $('#resumo').innerHTML = itens.map(([cls, ic, t, d, passo]) => `<div class="item ${cls}"><div class="st">${cls === 'ok' ? '✓' : cls === 'falta' ? '!' : '–'}</div><div><b>${ic} ${t}</b><small>${d}</small></div><button class="btn peq" data-ir="${passo}">Mudar</button></div>`).join('');
   const faltas = itens.filter((i) => i[0] === 'falta').length;
   $('#prontoTitulo').textContent = faltas ? 'Quase lá! Confira o que falta' : 'Tudo pronto! 🎉';
@@ -822,6 +845,7 @@ $('#fechar').onclick = async () => { await salvar(true); await apiJson('sair', {
   $('#usarSilencio').checked = !!sil; $('#silDe').value = sil ? sil[1] : 22; $('#silAte').value = sil ? sil[2] : 7; mostrarSilencio();
   for (const c of $$('[data-chips]')) for (const x of String(v[c.dataset.chips] || '').split(c.dataset.sep)) addChip(c, x);
   $('#SAIDA_VOZ').value = v.SAIDA_VOZ || 'notebook'; $('#MICROFONE_ORIGEM').value = v.MICROFONE_ORIGEM || 'notebook';
+  $(`input[name=ONDE][value="${v.ABRIR_PAGINA === '0' ? 'outro' : 'pc'}"]`).checked = true; mostrarOnde();
   mostrarNotebook(); mostrarCidade(); mostrarCmds();
   coletar(); ultimoSalvo = JSON.stringify(V); // o que veio do arquivo não precisa ser salvo de novo
   ir(0);

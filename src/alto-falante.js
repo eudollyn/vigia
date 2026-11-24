@@ -2,6 +2,7 @@
 // toca as falas do Vigia e, quando o Vigia pede, grava a sua voz e manda de volta.
 // Sem instalar nada no notebook. Protegido por uma chave na URL (só quem tem o link acessa).
 import http from 'node:http';
+import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -32,6 +33,9 @@ export function mostrarAviso(a) {
 /** Há um notebook conectado com microfone liberado? */
 export const temMic = () => clientes.some((c) => c.mic);
 
+/** Link da página no PRÓPRIO PC (localhost: o navegador libera o microfone sem configurar nada). */
+export const linkLocal = () => `http://localhost:${config.altoFalantePorta}/?k=${chave}`;
+/** Links para abrir a página em OUTRO aparelho da mesma rede (notebook, tablet…). */
 export function enderecos() {
   const ips = Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
   return ips.map((ip) => `http://${ip}:${config.altoFalantePorta}/?k=${chave}`);
@@ -106,7 +110,7 @@ const PAGINA_ARQ = new URL('./pagina.html', import.meta.url);
 export function iniciarAltoFalante() {
   const srv = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x');
-    if (url.searchParams.get('k') !== chave) { res.writeHead(403).end('Link sem a chave. Use o endereço de dados/LINK-DO-NOTEBOOK.txt.'); return; }
+    if (url.searchParams.get('k') !== chave) { res.writeHead(403).end('Link sem a chave. Use o endereço de dados/LINK-DA-PAGINA.txt.'); return; }
     if (url.pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(fs.readFileSync(PAGINA_ARQ)); return; }
     if (url.pathname === '/eventos') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
@@ -173,7 +177,15 @@ export function iniciarAltoFalante() {
   });
   srv.on('error', (e) => log(`alto-falante: não abriu a porta ${config.altoFalantePorta} (${e.message})`));
   srv.listen(config.altoFalantePorta, '0.0.0.0', () => {
-    for (const u of enderecos()) log(`alto-falante: abra no notebook → ${u}`);
-    fs.writeFileSync(path.join(DADOS, 'LINK-DO-NOTEBOOK.txt'), enderecos().join('\n') + '\n');
+    log(`página do Vigia neste PC → ${linkLocal()}`);
+    for (const u of enderecos()) log(`página do Vigia em outro aparelho da rede → ${u}`);
+    fs.writeFileSync(path.join(DADOS, 'LINK-DA-PAGINA.txt'),
+      `Neste PC:\n${linkLocal()}\n\nEm outro aparelho da mesma rede (notebook, tablet):\n${enderecos().join('\n')}\n`);
+    // ABRIR_PAGINA=1 (quem usa tudo no mesmo PC): se nenhuma página conectar em 12 s, abre no navegador deste PC
+    if (config.abrirPagina) setTimeout(() => {
+      if (clientes.length) return;
+      log('página do Vigia: abrindo no navegador deste PC');
+      spawn('rundll32.exe', ['url.dll,FileProtocolHandler', linkLocal()], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    }, 12_000);
   });
 }

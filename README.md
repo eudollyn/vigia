@@ -37,7 +37,7 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | ⏰ | **Lembretes** | "Me lembra às três de ligar pro cliente", "daqui a 20 minutos", "amanhã de manhã". |
 | ☀️ | **Bom dia** | Saudação, data, previsão do tempo e quem ficou sem resposta no WhatsApp. |
 | 🌙 | **"Até amanhã"** | Desliga o PC em 15 s (diga "cancela" para desfazer). |
-| 💻 | **Notebook como alto-falante** | Uma página no navegador do notebook toca a voz e usa o microfone dele. Não instala nada. |
+| 💻 | **Página do Vigia** | Abre sozinha no navegador do PC: fala, ouve os comandos e mostra os avisos. Quer usar de outro aparelho (notebook, tablet)? Também dá. |
 | 🎵 | **Modo música** | Pausa os comandos contínuos, aumenta a voz e adapta o microfone ao som da música. |
 | 🔒 | **Contatos privados** | Para quem você escolher, ele diz só "Mensagem de Fulano", sem ler o conteúdo. |
 | 📦 | **Respeita as arquivadas** | Conversas arquivadas no WhatsApp ficam em silêncio. Arquivou ou desarquivou no celular, ele atualiza na hora. |
@@ -48,8 +48,8 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | 🔗 | **Links** | *"Ana mandou um link"* → diga **"abra o link"** e ele abre no navegador do PC (só endereços http/https). |
 | ✋ | **"Cancelar" a qualquer hora** | Para na hora o que estiver falando, ouvindo ou gravando. Nada é enviado. |
 | 🔁 | **Nada se perde** | Recupera o que chegou com o PC desligado e avisa tudo de uma vez: *"Enquanto eu estava desligado, chegaram mensagens de…"*. |
-| 💤 | **Liga o PC pelo notebook** | Abriu a tampa do notebook com o PC desligado? Ele fala *"Ligando o PC"* e liga o PC pela rede (Wake-on-LAN). |
-| 🧵 | **Sem metralhadora de avisos** | Mensagens picadas viram um aviso só. Depois de avisar alguém, espera 5 min e diz *"Ana mandou mais 6 mensagens"*. Quer silêncio? *"Silencia a Ana por duas horas"*. |
+| 💤 | **Liga o PC pelo notebook** | *Opcional, para quem também usa um notebook:* abriu a tampa com o PC desligado? Ele fala *"Ligando o PC"* e liga o PC pela rede (Wake-on-LAN). |
+| 🧵 | **Sem metralhadora de avisos** | Mensagens picadas viram um aviso só. Depois de avisar alguém, espera 2 min (menos se você estiver conversando com a pessoa) e diz *"Ana mandou mais 6 mensagens"*. Quer silêncio? *"Silencia a Ana por duas horas"*. |
 | ✍️ | **Pontua o que você dita** | "oi tudo bem chego às sete pode ser" vira *"Oi, tudo bem? Chego às sete, pode ser?"* antes de enviar. |
 | 🪄 | **Assistente de configuração** | Uma página no navegador explica, testa e configura tudo. Nada de editar arquivo. |
 | 🗨️ | **Entende gírias** | Abreviações de chat (vc, blz, pfv, kkkk…) são lidas por extenso. |
@@ -65,7 +65,7 @@ flowchart LR
     V["🔮 Vigia<br/>(Node.js no PC)"] --> G["🧠 Gemini<br/>resumo e transcrição"]
     G --> V
     V --> T["🔔 Notificação<br/>do Windows"]
-    V --> N["💻 Página no notebook<br/>voz + microfone + comandos"]
+    V --> N["💻 Página do Vigia (neste PC<br/>ou em outro aparelho)<br/>voz + microfone + comandos"]
     N -- "responda · envia mensagem · me lembra · até amanhã" --> V
     V -- "só depois do seu 'enviar'" --> W
 ```
@@ -104,7 +104,7 @@ Para mudar a configuração depois, rode o **`CONFIGURAR.bat`**. Para ligar o Vi
 | **Voz** | **Ouve** a Francisca, a Thalita e o Antonio antes de escolher, digita como quer ser chamado e ouve a saudação. Escolhe entre "só diz de quem é" ou "já lê tudo", e o horário de silêncio. |
 | **Pessoas e grupos** | Contatos privados, grupos de baixa prioridade e pronúncia de nomes, como etiquetas. Dá para **ouvir** como um nome vai ser falado. |
 | **Sua cidade** | Procura a cidade, vê a previsão de hoje e ouve como o Vigia vai falar o tempo. |
-| **Notebook** | Mostra o link do notebook e o endereço para liberar o microfone no Chrome, com botões de copiar. |
+| **Página do Vigia** | Escolhe onde usar: **neste PC** (abre sozinha, nada a configurar) ou **em outro aparelho** da rede, com o passo a passo do Chrome e botões de copiar. |
 | **Comandos de voz** | Lista com busca e filtros (mensagens, áudios, links, dia a dia, controle). |
 | **Tudo pronto** | Confere o que está configurado e o que falta, liga "iniciar com o Windows" e liga o Vigia. |
 
@@ -116,18 +116,25 @@ Para mudar a configuração depois, rode o **`CONFIGURAR.bat`**. Para ligar o Vi
 
 ---
 
-## 💻 Usar o notebook como alto-falante e microfone (opcional)
+## 💻 A página do Vigia
 
-Útil quando o PC fica longe ou tem um alto-falante ruim.
+É onde o Vigia **fala com você, ouve os comandos de voz e mostra os avisos**. Ela abre no navegador e funciona de dois jeitos:
 
-1. Quando o Vigia liga, ele mostra o link no terminal e salva em `dados/LINK-DO-NOTEBOOK.txt`, algo como
-   `http://192.168.0.10:8765/?k=chave-secreta`
-2. Abra esse link no **Chrome do notebook** (na mesma rede Wi-Fi) e clique em **Ativar som e microfone**.
-3. **Para liberar o microfone** (uma vez só), porque o Chrome só libera microfone em HTTPS:
+**Neste PC (padrão)**
+Não precisa fazer nada: quando o Vigia liga, a página abre sozinha no navegador (`ABRIR_PAGINA=1`). Clique em **Ativar som e microfone** e permita o microfone. Use o **Chrome** ou o **Edge**. Se fechar sem querer, o link fica em `dados/LINK-DA-PAGINA.txt` (algo como `http://localhost:8765/?k=chave-secreta`).
+
+<details>
+<summary><b>Em outro aparelho (notebook, tablet) — opcional</b></summary>
+
+Útil quando o PC fica longe ou não tem caixa de som. Na configuração, escolha "Em outro aparelho" (`ABRIR_PAGINA=0`).
+
+1. Abra no Chrome do outro aparelho (mesma rede Wi-Fi) o link de rede de `dados/LINK-DA-PAGINA.txt`, algo como `http://192.168.0.10:8765/?k=chave-secreta`.
+2. **Para liberar o microfone** (uma vez só), porque fora do próprio PC o Chrome só libera microfone em HTTPS:
    - abra `chrome://flags/#unsafely-treat-insecure-origin-as-secure`;
    - mude para **Enabled** e coloque o endereço do PC, por exemplo `http://192.168.0.10:8765`;
    - clique em **Relaunch**.
-4. Se o Windows perguntar, permita o **Node.js** na rede privada.
+3. Se o Windows do PC perguntar, permita o **Node.js** na rede privada.
+</details>
 
 A página tem céu animado, uma esfera que reage à voz, cartões com os últimos avisos, os botões **Responder**, **🎵 Modo música** e **🌙 Até amanhã** (segure para confirmar).
 
@@ -192,8 +199,9 @@ O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 | `PAUSA_MESMA_PESSOA_MIN` | Minutos sem falar da mesma pessoa depois de um aviso | `5` |
 | `PRIVADOS` | Contatos cujo conteúdo não é lido em voz alta | `Mãe,Amor` |
 | `PRONUNCIA` | Como a voz fala certos nomes (só na fala) | `Thalyta=Talíta;Joao=João` |
-| `SAIDA_VOZ` | Onde a voz toca | `notebook` · `pc` · `ambos` |
-| `MICROFONE_ORIGEM` | De onde vem a sua voz | `notebook` · `pc` |
+| `ABRIR_PAGINA` | Abre a página do Vigia neste PC ao ligar (0 = você usa em outro aparelho) | `1` |
+| `SAIDA_VOZ` | Onde a voz toca (`notebook` = na página, onde ela estiver) | `notebook` · `pc` · `ambos` |
+| `MICROFONE_ORIGEM` | De onde vem a sua voz (`notebook` = microfone da página) | `notebook` · `pc` |
 | `CLIMA_CIDADE` / `CLIMA_LAT` / `CLIMA_LON` | Previsão do bom dia | `Recife` / `-8.05` / `-34.9` |
 
 ---
@@ -203,8 +211,8 @@ O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 - **Suas senhas e chaves ficam só no `.env`**, que está no `.gitignore` e nunca é enviado.
 - **Login do WhatsApp, contatos e histórico** ficam em `dados/`, também fora do Git. Não compartilhe essa pasta.
 - **Nada é enviado sem confirmação falada.** O Vigia não responde nem encaminha nada sozinho.
-- **O que vai para fora do seu PC:** o texto das mensagens e os áudios vão para o **Google Gemini** (resumo e transcrição). Com o notebook, o **reconhecimento de voz do Chrome** também usa servidores do Google. A previsão do tempo usa a **Open-Meteo** (só a cidade).
-- A página do notebook só abre com a **chave secreta** do link.
+- **O que vai para fora do seu PC:** o texto das mensagens e os áudios vão para o **Google Gemini** (resumo e transcrição). Os comandos de voz da página usam o **reconhecimento de voz do Chrome/Edge**, que também passa por servidores do Google (ou da Microsoft, no Edge). A previsão do tempo usa a **Open-Meteo** (só a cidade).
+- A página do Vigia só abre com a **chave secreta** do link.
 
 > ⚠️ **Aviso:** a conexão com o WhatsApp usa a biblioteca não oficial [Baileys](https://github.com/WhiskeySockets/Baileys), o mesmo protocolo do WhatsApp Web. Use com moderação e por sua conta e risco: o WhatsApp não aprova clientes não oficiais.
 
@@ -243,15 +251,15 @@ A lista de arquivadas é lida a cada vez que o Vigia conecta (o log mostra *"N c
 </details>
 
 <details>
-<summary><b>A página do notebook não abre</b></summary>
+<summary><b>A página do Vigia não abre</b></summary>
 
-O notebook precisa estar na mesma rede do PC. Permita o **Node.js** no Firewall do Windows (rede privada).
+Neste PC: abra o link de `dados/LINK-DA-PAGINA.txt` com o Vigia ligado. Em outro aparelho: ele precisa estar na mesma rede do PC, e o **Node.js** precisa estar liberado no Firewall do Windows (rede privada).
 </details>
 
 <details>
-<summary><b>O microfone do notebook não funciona</b></summary>
+<summary><b>O microfone da página não funciona</b></summary>
 
-Faça o passo da flag `unsafely-treat-insecure-origin-as-secure` e recarregue a página. Ela precisa mostrar "🎙️ Microfone".
+Neste PC: permita o microfone quando o navegador perguntar (cadeado ao lado do endereço → Microfone → Permitir). Em outro aparelho: faça o passo da flag `unsafely-treat-insecure-origin-as-secure` e recarregue. A página precisa mostrar "🎙️ Microfone".
 </details>
 
 <details>
@@ -292,8 +300,8 @@ vigia/
     ├── lembretes.js        # lembretes por voz
     ├── pendencias.js       # conversas sem resposta
     ├── clima.js            # previsão do tempo
-    ├── alto-falante.js     # servidor da página do notebook
-    └── pagina.html         # a página animada do notebook
+    ├── alto-falante.js     # servidor da página do Vigia
+    └── pagina.html         # a página animada (neste PC ou em outro aparelho)
 ```
 
 ---

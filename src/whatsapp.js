@@ -12,7 +12,7 @@ import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, DADOS } from './config.js';
-import { log, notificar, registrarEnvio, registrarEnvioAudio } from './avisos.js';
+import { log, notificar, registrarEnvio, registrarEnvioAudio, marcarConversa, conversaAtiva } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
 
@@ -272,7 +272,9 @@ export function iniciarWhatsApp(aoChegar) {
     b.linhas.push(linha);
     clearTimeout(b.t);
     // espera a pessoa parar de mandar (mensagens picadas viram um aviso só), mas no máximo 1 minuto
-    const espera = Math.max(1000, Math.min(config.agruparMs, b.inicio + 60_000 - Date.now()));
+    // conversando com a pessoa agora? junta por pouco tempo (6 s) para a resposta chegar rápido
+    const agrupar = conversaAtiva(chave) ? Math.min(6000, config.agruparMs) : config.agruparMs;
+    const espera = Math.max(1000, Math.min(agrupar, b.inicio + 60_000 - Date.now()));
     b.t = setTimeout(() => {
       buffers.delete(chave);
       const texto = b.grupo ? b.linhas.map((l) => `${l.autor}: ${l.texto}`).join('\n') : b.linhas.map((l) => l.texto).join('\n');
@@ -391,7 +393,11 @@ export function iniciarWhatsApp(aoChegar) {
           if (!jid) continue;
           if (isJidStatusBroadcast(jid) || isJidBroadcast(jid) || isJidNewsletter(jid)) continue;
           const idsChat = [jid, msg.key.remoteJidAlt].filter(Boolean).map((j) => jidNormalizedUser(j));
-          if (msg.key.fromMe) { if (!isJidGroup(jid)) respondeu(idsChat); continue; } // você respondeu (celular/PC)
+          if (msg.key.fromMe) { // você mandou mensagem (celular, PC ou por voz)
+            if (!isJidGroup(jid)) respondeu(idsChat);
+            marcarConversa(idsChat); // está conversando: as respostas dessa pessoa são avisadas na hora
+            continue;
+          }
           if (estaArquivada(idsChat)) continue; // conversa arquivada: nenhum aviso
           if (Number(msg.messageTimestamp || 0) < inicio) continue;
           if (vistos.has(msg.key.id)) continue;
