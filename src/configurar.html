@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configurar o Vigia</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05060b; --txt:#f4f1ea; --sub:#9aa0b4; --fraco:#6b7086; --ouro:#ffd9a0; --ouro2:#ffb35c;
+  --azul:#7cc4ff; --verde:#6fe3a5; --verm:#ff8a7a; --vidro:rgba(255,255,255,.055); --vidro2:rgba(255,255,255,.09);
+  --borda:rgba(255,255,255,.12); --raio:18px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--txt);font:16px/1.55 "Inter Tight",system-ui,sans-serif}
+canvas#ceu{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+a{color:var(--azul)}
+button{font:inherit;color:inherit}
+.app{position:relative;z-index:1;display:grid;grid-template-columns:270px minmax(0,1fr);min-height:100vh}
+/* trilho de passos */
+.trilho{padding:28px 18px;border-right:1px solid var(--borda);background:rgba(5,6,11,.55);backdrop-filter:blur(14px);position:sticky;top:0;height:100vh;overflow:auto}
+.marca{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;margin:0 8px 26px}
+.marca i{width:11px;height:11px;border-radius:50%;background:var(--ouro);box-shadow:0 0 16px var(--ouro2)}
+.passos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.passos button{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;cursor:pointer;color:var(--sub);transition:.25s}
+.passos button:hover{background:var(--vidro);color:var(--txt)}
+.passos button:focus-visible{outline:2px solid var(--ouro);outline-offset:2px}
+.passos .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:600;border:1px solid var(--borda);flex:none;transition:.3s}
+.passos li.atual button{background:var(--vidro2);color:var(--txt)}
+.passos li.atual .n{background:var(--ouro);color:#1a1206;border-color:var(--ouro);box-shadow:0 0 14px rgba(255,179,92,.45)}
+.passos li.feito .n{background:rgba(111,227,165,.15);border-color:rgba(111,227,165,.5);color:var(--verde)}
+.trilho .rodape{margin:26px 8px 0;font-size:12px;color:var(--fraco)}
+/* palco */
+main{padding:48px clamp(18px,5vw,72px) 120px;max-width:980px;width:100%}
+section{display:none;animation:entra .55s cubic-bezier(.2,.8,.2,1)}
+section.ativo{display:block}
+@keyframes entra{from{opacity:0;transform:translateY(16px)}}
+.tag{display:inline-block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ouro);margin-bottom:10px}
+h1{font-size:clamp(30px,4.4vw,46px);line-height:1.08;letter-spacing:-.025em;margin:0 0 14px;font-weight:800}
+h2{font-size:20px;margin:30px 0 10px;letter-spacing:-.01em}
+p.lead{font-size:18px;color:var(--sub);max-width:640px;margin:0 0 26px}
+.sub{color:var(--sub)} .peq{font-size:13.5px;color:var(--sub)}
+.cartao{background:var(--vidro);border:1px solid var(--borda);border-radius:var(--raio);padding:22px;backdrop-filter:blur(10px)}
+.grade{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+/* campos */
+label.campo{display:flex;flex-direction:column;gap:7px;font-size:14px;color:var(--sub);margin-bottom:14px}
+input[type=text],input[type=password],input[type=email],input[type=number],input[type=search],select{
+  font:inherit;color:var(--txt);background:rgba(0,0,0,.35);border:1px solid var(--borda);border-radius:12px;padding:12px 14px;width:100%;outline:none;transition:.2s}
+input:focus,select:focus{border-color:rgba(255,217,160,.6);box-shadow:0 0 0 4px rgba(255,179,92,.12)}
+.comolho{position:relative} .comolho input{padding-right:52px}
+.olho{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;cursor:pointer;padding:8px;border-radius:8px;color:var(--sub)}
+.olho:hover{color:var(--txt)}
+/* botões */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:999px;border:1px solid var(--borda);background:var(--vidro);cursor:pointer;font-weight:600;transition:transform .2s cubic-bezier(.2,.8,.2,1),border-color .25s,box-shadow .25s,background .25s;text-decoration:none;color:var(--txt)}
+.btn:hover{border-color:rgba(255,217,160,.55);box-shadow:0 0 24px rgba(255,179,92,.18);transform:translateY(-1px)}
+.btn:active{transform:scale(.97)}
+.btn:focus-visible{outline:2px solid var(--ouro);outline-offset:3px}
+.btn.pri{background:linear-gradient(180deg,var(--ouro),var(--ouro2));color:#1d1306;border-color:transparent}
+.btn.pri:hover{box-shadow:0 0 30px rgba(255,179,92,.45)}
+.btn.peq{padding:8px 14px;font-size:14px}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.linha{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+/* resultado de teste */
+.res{display:none;margin-top:12px;padding:11px 14px;border-radius:12px;font-size:14.5px;border:1px solid}
+.res.ok{display:block;color:var(--verde);border-color:rgba(111,227,165,.35);background:rgba(111,227,165,.08)}
+.res.mal{display:block;color:var(--verm);border-color:rgba(255,138,122,.35);background:rgba(255,138,122,.08)}
+.res.esp{display:block;color:var(--sub);border-color:var(--borda);background:var(--vidro)}
+.giro{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;display:inline-block;animation:gira .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes gira{to{transform:rotate(1turn)}}
+/* interruptor */
+.inter{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-radius:14px;background:var(--vidro);border:1px solid var(--borda);margin-bottom:14px;cursor:pointer}
+.inter b{display:block} .inter span{font-size:14px;color:var(--sub)}
+.chave{position:relative;width:50px;height:28px;flex:none}
+.chave input{opacity:0;width:0;height:0;position:absolute}
+.chave i{position:absolute;inset:0;border-radius:999px;background:rgba(255,255,255,.15);transition:.3s}
+.chave i::after{content:"";position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.3s cubic-bezier(.2,.8,.2,1)}
+.chave input:checked + i{background:var(--verde)}
+.chave input:checked + i::after{transform:translateX(22px)}
+.chave input:focus-visible + i{outline:2px solid var(--ouro);outline-offset:2px}
+/* opções em cartão */
+.opcao{position:relative;display:block;cursor:pointer;padding:18px;border-radius:16px;background:var(--vidro);border:1px solid var(--borda);transition:.25s}
+.opcao:hover{border-color:rgba(255,255,255,.3);transform:translateY(-2px)}
+.opcao input{position:absolute;opacity:0}
+.opcao:has(input:checked){border-color:var(--ouro);background:rgba(255,217,160,.08);box-shadow:0 0 26px rgba(255,179,92,.15)}
+.opcao:has(input:focus-visible){outline:2px solid var(--ouro);outline-offset:2px}
+.opcao .t{font-weight:600;display:flex;align-items:center;gap:8px}
+.opcao .d{font-size:14px;color:var(--sub);margin-top:4px}
+.selo{font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(111,227,165,.15);color:var(--verde);font-weight:600}
+/* chips editáveis */
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-radius:14px;border:1px solid var(--borda);background:rgba(0,0,0,.3);min-height:54px;cursor:text}
+.chips:focus-within{border-color:rgba(255,217,160,.6)}
+.chips span{display:inline-flex;align-items:center;gap:6px;padding:6px 8px 6px 12px;border-radius:999px;background:var(--vidro2);border:1px solid var(--borda);font-size:14px;animation:entra .3s}
+.chips span button{border:0;background:none;cursor:pointer;color:var(--sub);padding:0 4px;font-size:16px;line-height:1}
+.chips span button:hover{color:var(--verm)}
+.chips input{flex:1;min-width:160px;border:0!important;background:none!important;box-shadow:none!important;padding:6px!important}
+/* passo 0 */
+.ola{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:40px;align-items:center}
+.esfera{width:100%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6e6,var(--ouro) 28%,var(--ouro2) 55%,#6b3b10 100%);box-shadow:0 0 80px rgba(255,179,92,.45),inset -20px -30px 60px rgba(0,0,0,.35);animation:respira 4s ease-in-out infinite;max-width:320px;margin:auto}
+@keyframes respira{50%{transform:scale(1.04);box-shadow:0 0 120px rgba(255,179,92,.6),inset -20px -30px 60px rgba(0,0,0,.35)}}
+.check{list-style:none;padding:0;margin:0 0 26px;display:grid;gap:10px}
+.check li{display:flex;gap:12px;align-items:flex-start}
+.check li::before{content:"";width:22px;height:22px;flex:none;border-radius:50%;background:rgba(255,217,160,.15);border:1px solid rgba(255,217,160,.4);margin-top:2px}
+.estados{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
+.pilula{font-size:13px;padding:6px 12px;border-radius:999px;background:var(--vidro);border:1px solid var(--borda);color:var(--sub);display:inline-flex;gap:7px;align-items:center}
+.pilula b{width:7px;height:7px;border-radius:50%;background:#666}
+.pilula.ok b{background:var(--verde);box-shadow:0 0 8px var(--verde)} .pilula.mal b{background:var(--ouro2);box-shadow:0 0 8px var(--ouro2)}
+/* como funciona */
+.fluxo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;position:relative;margin:10px 0 18px}
+.no{position:relative;text-align:center;padding:20px 12px;border-radius:18px;background:var(--vidro);border:1px solid var(--borda);cursor:pointer;transition:.35s}
+.no:hover{transform:translateY(-3px);border-color:rgba(255,255,255,.3)}
+.no.aceso{border-color:var(--ouro);background:rgba(255,217,160,.1);box-shadow:0 0 34px rgba(255,179,92,.3);transform:translateY(-4px)}
+.no.sel{border-color:var(--azul)}
+.no .ic{font-size:30px} .no .t{font-weight:600;margin-top:6px} .no .d{font-size:13px;color:var(--sub)}
+.no:not(:last-child)::after{content:"";position:absolute;right:-12px;top:50%;width:10px;height:2px;background:var(--borda)}
+.explica{min-height:72px}
+.palco{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.celular{border-radius:22px;padding:16px;background:#0b1410;border:1px solid rgba(111,227,165,.2);min-height:250px;display:flex;flex-direction:column;gap:8px}
+.celular .topo{font-size:13px;color:var(--sub);border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:8px;margin-bottom:4px}
+.bolha{max-width:85%;padding:9px 13px;border-radius:14px;font-size:14.5px;animation:entra .4s}
+.bolha.ela{background:#1f2c34;align-self:flex-start;border-top-left-radius:4px}
+.bolha.eu{background:#005c4b;align-self:flex-end;border-top-right-radius:4px}
+.notebook{border-radius:22px;padding:16px;background:rgba(0,0,0,.35);border:1px solid var(--borda);min-height:250px;display:flex;flex-direction:column;gap:10px}
+.notebook .topo{font-size:13px;color:var(--sub)}
+.fala{padding:11px 14px;border-radius:14px;background:rgba(255,217,160,.09);border:1px solid rgba(255,217,160,.25);color:var(--ouro);font-size:14.5px;animation:entra .4s}
+.voce{padding:11px 14px;border-radius:14px;background:rgba(124,196,255,.09);border:1px solid rgba(124,196,255,.25);color:var(--azul);font-size:14.5px;animation:entra .4s;align-self:flex-end}
+/* whatsapp */
+.qrbox{display:grid;place-items:center;aspect-ratio:1;max-width:300px;border-radius:18px;background:rgba(0,0,0,.35);border:1px dashed var(--borda);overflow:hidden}
+.qrbox img{width:100%;height:100%;background:#fff;padding:10px}
+.passinhos{counter-reset:p;list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.passinhos li{counter-increment:p;display:flex;gap:12px;align-items:flex-start}
+.passinhos li::before{content:counter(p);width:28px;height:28px;flex:none;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:14px;background:rgba(124,196,255,.12);color:var(--azul);border:1px solid rgba(124,196,255,.35)}
+kbd{font:600 13px "Inter Tight";padding:2px 8px;border-radius:7px;background:var(--vidro2);border:1px solid var(--borda)}
+/* provedores */
+.prov{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.prov button{padding:14px 10px;border-radius:14px;border:1px solid var(--borda);background:var(--vidro);cursor:pointer;font-weight:600;transition:.25s}
+.prov button:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.3)}
+.prov button.sel{border-color:var(--ouro);background:rgba(255,217,160,.1)}
+.dica{padding:12px 16px;border-radius:12px;background:rgba(124,196,255,.07);border:1px solid rgba(124,196,255,.22);font-size:14.5px;color:#cfe6ff;margin:0 0 16px}
+.dica.aviso{background:rgba(255,179,92,.08);border-color:rgba(255,179,92,.3);color:#ffe2bd}
+/* voz */
+.voz{display:flex;flex-direction:column;gap:12px}
+.voz .rosto{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-size:26px;background:var(--vidro2);border:1px solid var(--borda)}
+.ondas{display:flex;gap:3px;height:22px;align-items:center}
+.ondas i{width:3px;border-radius:2px;background:var(--ouro);height:4px;transition:height .1s}
+.tocando .ondas i{animation:onda .9s ease-in-out infinite}
+.ondas i:nth-child(2){animation-delay:.1s}.ondas i:nth-child(3){animation-delay:.2s}.ondas i:nth-child(4){animation-delay:.3s}.ondas i:nth-child(5){animation-delay:.4s}
+@keyframes onda{50%{height:20px}}
+.previa{font-size:clamp(22px,3vw,30px);font-weight:800;color:var(--ouro);letter-spacing:-.01em;margin:4px 0 12px}
+/* clima */
+.resultados{display:grid;gap:8px;margin-top:10px}
+.resultados button{all:unset;cursor:pointer;padding:12px 14px;border-radius:12px;background:var(--vidro);border:1px solid var(--borda);transition:.2s}
+.resultados button:hover,.resultados button:focus-visible{border-color:var(--ouro)}
+.tempo{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.tempo .graus{font-size:52px;font-weight:800;letter-spacing:-.03em}
+/* comandos */
+.cmds{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:16px}
+.cmd{padding:16px 18px;border-radius:16px;background:var(--vidro);border:1px solid var(--borda);transition:.25s}
+.cmd:hover{border-color:rgba(255,217,160,.45);transform:translateY(-2px)}
+.cmd .diga{font-weight:600;color:var(--ouro)} .cmd .faz{font-size:14px;color:var(--sub);margin-top:4px}
+.cmd .cat{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--fraco)}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.filtros button{padding:7px 14px;border-radius:999px;border:1px solid var(--borda);background:var(--vidro);cursor:pointer;font-size:14px}
+.filtros button.sel{border-color:var(--ouro);color:var(--ouro)}
+/* link / copiar */
+.copiar{display:flex;gap:8px;align-items:center;padding:10px 10px 10px 14px;border-radius:12px;background:rgba(0,0,0,.35);border:1px solid var(--borda);font:14px ui-monospace,Consolas,monospace;word-break:break-all;margin-bottom:10px}
+.copiar span{flex:1}
+/* resumo final */
+.resumo{display:grid;gap:10px}
+.resumo .item{display:flex;gap:14px;align-items:center;padding:14px 16px;border-radius:14px;background:var(--vidro);border:1px solid var(--borda)}
+.resumo .item .st{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:14px}
+.resumo .ok .st{background:rgba(111,227,165,.15);color:var(--verde)} .resumo .pula .st{background:var(--vidro2);color:var(--fraco)} .resumo .falta .st{background:rgba(255,179,92,.15);color:var(--ouro2)}
+.resumo .item div{flex:1} .resumo .item small{display:block;color:var(--sub)}
+.resumo .item button{flex:none}
+/* navegação */
+.nav{position:fixed;bottom:0;left:270px;right:0;padding:16px clamp(18px,5vw,72px);display:flex;justify-content:space-between;gap:12px;background:linear-gradient(0deg,rgba(5,6,11,.95) 40%,transparent);z-index:3}
+.toast{position:fixed;right:24px;top:24px;z-index:5;padding:10px 16px;border-radius:999px;background:rgba(111,227,165,.15);border:1px solid rgba(111,227,165,.4);color:var(--verde);font-size:14px;opacity:0;transform:translateY(-10px);transition:.35s;pointer-events:none}
+.toast.ver{opacity:1;transform:none}
+.toast.mal{background:rgba(255,138,122,.15);border-color:rgba(255,138,122,.4);color:var(--verm)}
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .trilho{position:sticky;top:0;height:auto;z-index:4;padding:12px 16px;border-right:0;border-bottom:1px solid var(--borda)}
+  .marca{margin:0 0 10px}
+  .passos{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:none}
+  .passos button{padding:6px 8px} .passos .rot{display:none} .passos li.atual .rot{display:inline}
+  .trilho .rodape{display:none}
+  main{padding:28px 16px 120px}
+  .nav{left:0;padding:14px 16px}
+  .ola,.palco{grid-template-columns:minmax(0,1fr)}
+  .esfera{max-width:180px}
+  .fluxo{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .no:not(:last-child)::after{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="ceu" aria-hidden="true"></canvas>
+<div class="app">
+  <nav class="trilho" aria-label="Passos da configuração">
+    <div class="marca"><i></i>Vigia</div>
+    <ol class="passos" id="passos"></ol>
+    <div class="rodape">Tudo fica só no seu PC. Nada daqui vai para a internet, a não ser os testes que você pedir.</div>
+  </nav>
+
+  <main id="palco">
+
+    <!-- 0 · boas-vindas -->
+    <section data-passo="inicio" data-titulo="Boas-vindas">
+      <div class="ola">
+        <div>
+          <span class="tag">Assistente de configuração</span>
+          <h1>Vamos deixar o seu Vigia pronto em poucos minutos.</h1>
+          <p class="lead">O Vigia lê o seu WhatsApp e o seu e-mail, resume com IA e te avisa em voz alta. Você responde falando. Este assistente explica cada parte e testa tudo com você.</p>
+          <ul class="check">
+            <li><span><b>Como funciona</b> <span class="sub">numa simulação de 20 segundos</span></span></li>
+            <li><span><b>A chave da IA</b> <span class="sub">grátis, com teste na hora</span></span></li>
+            <li><span><b>WhatsApp e e-mail</b> <span class="sub">QR code aqui mesmo e teste de login</span></span></li>
+            <li><span><b>Voz, nomes e cidade</b> <span class="sub">ouça antes de escolher</span></span></li>
+          </ul>
+          <div class="linha"><button class="btn pri" data-ir="1">Começar →</button><span class="peq">Dá para voltar e mudar qualquer coisa depois.</span></div>
+          <div class="estados" id="estadosSistema"></div>
+        </div>
+        <div class="esfera" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <!-- 1 · como funciona -->
+    <section data-passo="como" data-titulo="Como funciona">
+      <span class="tag">Passo 1</span>
+      <h1>Como o Vigia funciona</h1>
+      <p class="lead">Ele roda no seu PC, conectado ao WhatsApp como um "aparelho conectado" (igual ao WhatsApp Web) e à sua caixa de e-mail. Clique em cada etapa ou veja a simulação.</p>
+      <div class="fluxo" id="fluxo">
+        <div class="no" data-no="0" tabindex="0" role="button"><div class="ic">📱</div><div class="t">Chega a mensagem</div><div class="d">WhatsApp ou e-mail</div></div>
+        <div class="no" data-no="1" tabindex="0" role="button"><div class="ic">🖥️</div><div class="t">O Vigia lê</div><div class="d">no seu PC, só leitura</div></div>
+        <div class="no" data-no="2" tabindex="0" role="button"><div class="ic">🧠</div><div class="t">A IA resume</div><div class="d">e dá a prioridade</div></div>
+        <div class="no" data-no="3" tabindex="0" role="button"><div class="ic">🔊</div><div class="t">Ele te avisa</div><div class="d">notificação e voz</div></div>
+      </div>
+      <div class="cartao explica" id="explica"><span class="sub">Clique numa etapa acima para saber mais.</span></div>
+      <div class="linha" style="margin-top:18px"><button class="btn pri" id="simular">▶ Simular uma mensagem</button><span class="peq" id="simInfo">Com som: a voz é a que você vai escolher.</span></div>
+      <div class="palco">
+        <div class="celular" aria-live="polite"><div class="topo">💬 WhatsApp · conversa com a Ana</div><div id="simCel" style="display:flex;flex-direction:column;gap:8px"></div></div>
+        <div class="notebook" aria-live="polite"><div class="topo">🔊 Vigia</div><div id="simNote" style="display:flex;flex-direction:column;gap:10px"></div></div>
+      </div>
+    </section>
+
+    <!-- 2 · IA -->
+    <section data-passo="ia" data-titulo="Inteligência">
+      <span class="tag">Passo 2</span>
+      <h1>A inteligência que resume</h1>
+      <p class="lead">O Vigia usa o <b>Google Gemini</b> para resumir mensagens, transcrever áudios e entender lembretes. O nível gratuito basta para uso pessoal.</p>
+      <div class="grade g2">
+        <label class="opcao"><input type="radio" name="RESUMO_IA" value="gemini"><div class="t">Gemini <span class="selo">recomendado</span></div><div class="d">Resumos curtos, prioridade, transcrição de áudios.</div></label>
+        <label class="opcao"><input type="radio" name="RESUMO_IA" value="simples"><div class="t">Sem IA</div><div class="d">Lê o começo da mensagem. Sem transcrição de áudio.</div></label>
+      </div>
+      <div id="blocoGemini">
+        <h2>Como pegar a chave (1 minuto)</h2>
+        <ol class="passinhos" style="margin-bottom:18px">
+          <li><span>Abra o <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> e entre com sua conta Google.</span></li>
+          <li><span>Clique em <kbd>Create API key</kbd> (Criar chave de API).</span></li>
+          <li><span>Copie a chave (começa com <kbd>AIza</kbd>) e cole aqui embaixo.</span></li>
+        </ol>
+        <label class="campo">Chave do Gemini
+          <div class="comolho"><input type="password" id="gemini" autocomplete="off" spellcheck="false" placeholder="AIza…"><button class="olho" type="button" data-olho="gemini" aria-label="Mostrar ou esconder a chave">👁</button></div>
+        </label>
+        <div class="linha"><button class="btn" id="testarGemini">Testar a chave</button><span class="peq" id="geminiSalva"></span></div>
+        <div class="res" id="resGemini" role="status"></div>
+      </div>
+    </section>
+
+    <!-- 3 · WhatsApp -->
+    <section data-passo="whatsapp" data-titulo="WhatsApp">
+      <span class="tag">Passo 3</span>
+      <h1>Conectar o WhatsApp</h1>
+      <p class="lead">O Vigia entra como um <b>aparelho conectado</b>, como o WhatsApp Web. Ele <b>não aparece online</b> e <b>não marca nada como lido</b>: seu celular continua recebendo as notificações normalmente.</p>
+      <label class="inter"><div><b>Ler o WhatsApp</b><span>Desligue se quiser usar só o e-mail.</span></div><span class="chave"><input type="checkbox" id="WHATSAPP"><i></i></span></label>
+      <div id="blocoWhats">
+        <div class="cartao" id="whatsConectado" style="display:none">
+          <div class="linha" style="justify-content:space-between"><div><b style="color:var(--verde)">✓ Conectado</b> <span class="sub" id="whatsQuem"></span></div><button class="btn peq" id="whatsOutro">Conectar outro número</button></div>
+        </div>
+        <div class="grade g2" id="whatsParear" style="align-items:center">
+          <div>
+            <ol class="passinhos">
+              <li><span>No celular, abra o <b>WhatsApp</b>.</span></li>
+              <li><span>Toque em <kbd>⋮</kbd> (Android) ou <kbd>Configurações</kbd> (iPhone) → <b>Aparelhos conectados</b>.</span></li>
+              <li><span>Toque em <b>Conectar um aparelho</b>.</span></li>
+              <li><span>Aponte a câmera para o QR code ao lado.</span></li>
+            </ol>
+            <div class="linha" style="margin-top:18px"><button class="btn pri" id="whatsQr">Mostrar o QR code</button></div>
+            <div class="res" id="resWhats" role="status"></div>
+          </div>
+          <div class="qrbox" id="qrbox"><span class="peq" style="padding:20px;text-align:center">O QR code aparece aqui.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 · e-mail -->
+    <section data-passo="email" data-titulo="E-mail">
+      <span class="tag">Passo 4</span>
+      <h1>Conectar o e-mail</h1>
+      <p class="lead">O Vigia avisa na hora que chega um e-mail (IMAP). Newsletter e propaganda ficam em silêncio. Ele só <b>lê</b>: não apaga, não move, não marca como lido.</p>
+      <label class="inter"><div><b>Ler o e-mail</b><span>Desligue se quiser usar só o WhatsApp.</span></div><span class="chave"><input type="checkbox" id="usarEmail"><i></i></span></label>
+      <div id="blocoEmail">
+        <div class="peq" style="margin-bottom:8px">Qual é o seu e-mail?</div>
+        <div class="prov" id="provedores"></div>
+        <div class="dica" id="dicaProv" style="display:none"></div>
+        <div class="grade g2">
+          <label class="campo">Endereço de e-mail<input type="email" id="EMAIL_USUARIO" autocomplete="off" placeholder="voce@exemplo.com"></label>
+          <label class="campo">Senha
+            <div class="comolho"><input type="password" id="EMAIL_SENHA" autocomplete="off" placeholder="senha (ou senha de app)"><button class="olho" type="button" data-olho="EMAIL_SENHA" aria-label="Mostrar ou esconder a senha">👁</button></div>
+          </label>
+          <label class="campo">Servidor IMAP<input type="text" id="IMAP_HOST" autocomplete="off" placeholder="imap.exemplo.com"></label>
+          <label class="campo">Porta<input type="number" id="IMAP_PORTA" placeholder="993"></label>
+        </div>
+        <div class="linha"><button class="btn" id="testarEmail">Testar a conexão</button><span class="peq" id="senhaSalva"></span></div>
+        <div class="res" id="resEmail" role="status"></div>
+      </div>
+    </section>
+
+    <!-- 5 · voz -->
+    <section data-passo="voz" data-titulo="Voz">
+      <span class="tag">Passo 5</span>
+      <h1>A voz do seu Vigia</h1>
+      <p class="lead">Vozes neurais da Microsoft, grátis e sem chave. Clique para ouvir cada uma.</p>
+      <div class="dica aviso" id="semFfmpeg" style="display:none">⚠️ O <b>ffmpeg</b> não foi encontrado. Sem ele o Vigia usa a voz do Windows. Rode o <b>INSTALAR.bat</b> de novo e aceite instalar o ffmpeg.</div>
+      <label class="inter"><div><b>Falar os avisos</b><span>Desligado, ele só mostra a notificação do Windows.</span></div><span class="chave"><input type="checkbox" id="VOZ"><i></i></span></label>
+      <div class="grade g3" id="vozes"></div>
+      <h2>Como ele te chama</h2>
+      <div class="grade g2" style="align-items:end">
+        <label class="campo">Seu nome ou apelido (opcional)<input type="text" id="SAUDACAO_NOME" placeholder="ex.: Sr. João, Ana, chefe…"></label>
+        <div><div class="previa" id="previaSaud">Bom dia!</div></div>
+      </div>
+      <div class="linha"><button class="btn peq" id="ouvirSaud">▶ Ouvir a saudação</button></div>
+      <h2>Como ele avisa</h2>
+      <div class="grade g2">
+        <label class="opcao"><input type="radio" name="LER_SOB_DEMANDA" value="1"><div class="t">Só diz de quem é <span class="selo">recomendado</span></div><div class="d">"Mensagem de Ana." Para ouvir, você diz <b>"leia"</b>.</div></label>
+        <label class="opcao"><input type="radio" name="LER_SOB_DEMANDA" value="0"><div class="t">Já lê tudo</div><div class="d">"Mensagem de Ana: chego às sete, pode ser?"</div></label>
+      </div>
+      <h2>Horário de silêncio</h2>
+      <label class="inter"><div><b>Não falar à noite</b><span>Nesse horário chega só a notificação, sem voz.</span></div><span class="chave"><input type="checkbox" id="usarSilencio"><i></i></span></label>
+      <div class="linha" id="blocoSilencio"><span class="sub">das</span><select id="silDe" style="width:auto"></select><span class="sub">às</span><select id="silAte" style="width:auto"></select></div>
+    </section>
+
+    <!-- 6 · pessoas -->
+    <section data-passo="pessoas" data-titulo="Pessoas e grupos">
+      <span class="tag">Passo 6</span>
+      <h1>Pessoas, grupos e nomes</h1>
+      <p class="lead">Ajuste quem fala na hora, de quem o conteúdo é segredo e como a voz pronuncia nomes difíceis. Escreva um nome e aperte <kbd>Enter</kbd>.</p>
+      <h2>🔒 Contatos privados</h2>
+      <p class="peq">A voz diz só "Mensagem de Fulano", sem ler o conteúdo, mesmo quando você diz "leia" perto de outras pessoas? Não: o "leia" sempre lê. Aqui é só o <b>aviso automático</b> que fica discreto.</p>
+      <div class="chips" data-chips="PRIVADOS" data-sep=","><input type="text" placeholder="ex.: Amor, Mãe…" aria-label="Adicionar contato privado"></div>
+      <h2>🔕 Baixa prioridade</h2>
+      <p class="peq">Grupos barulhentos (promoções, condomínio…). Não falam na hora: entram num resumo de hora em hora e não gastam a cota da IA. Basta um pedaço do nome.</p>
+      <div class="chips" data-chips="BAIXA_PRIORIDADE" data-sep=","><input type="text" placeholder="ex.: Promoções, Condomínio…" aria-label="Adicionar grupo de baixa prioridade"></div>
+      <h2>🔤 Pronúncia</h2>
+      <p class="peq">Como a voz deve <b>falar</b> um nome (a tela continua igual). Escreva <kbd>Thalyta=Talíta</kbd>.</p>
+      <div class="chips" data-chips="PRONUNCIA" data-sep=";"><input type="text" placeholder="Nome=Jeito de falar" aria-label="Adicionar pronúncia"></div>
+      <div class="linha" style="margin-top:12px"><input type="text" id="testePron" placeholder="Digite um nome para ouvir" style="max-width:320px"><button class="btn peq" id="ouvirPron">▶ Ouvir</button></div>
+    </section>
+
+    <!-- 7 · clima -->
+    <section data-passo="clima" data-titulo="Sua cidade">
+      <span class="tag">Passo 7</span>
+      <h1>Sua cidade</h1>
+      <p class="lead">Para o <b>bom dia</b> com a previsão do tempo e para quando você perguntar <i>"vai chover hoje?"</i>.</p>
+      <label class="campo">Procurar cidade<input type="search" id="buscaCidade" placeholder="Digite o nome da cidade" autocomplete="off"></label>
+      <div class="resultados" id="resultadosCidade" role="listbox" aria-label="Cidades encontradas"></div>
+      <div class="cartao" id="cidadeEscolhida" style="margin-top:16px"></div>
+    </section>
+
+    <!-- 8 · notebook -->
+    <section data-passo="notebook" data-titulo="Notebook (opcional)">
+      <span class="tag">Passo 8 · opcional</span>
+      <h1>Notebook como alto-falante</h1>
+      <p class="lead">O PC fica longe ou não tem caixa de som? Abra uma página no <b>Chrome do notebook</b> (mesma rede Wi-Fi): a voz toca nele e você fala pelo microfone dele. Não instala nada.</p>
+      <div class="grade g2">
+        <label class="campo">Onde a voz toca
+          <select id="SAIDA_VOZ"><option value="notebook">No notebook (se a página estiver aberta)</option><option value="pc">Sempre no PC</option><option value="ambos">Nos dois</option></select></label>
+        <label class="campo">De onde vem a sua voz
+          <select id="MICROFONE_ORIGEM"><option value="notebook">Microfone do notebook</option><option value="pc">Microfone do PC</option></select></label>
+      </div>
+      <h2>1. Abra este link no Chrome do notebook</h2>
+      <div id="linksNote"></div>
+      <h2>2. Libere o microfone (uma vez só)</h2>
+      <p class="peq">O Chrome só libera microfone em sites seguros (https). Para a página do Vigia, faça assim:</p>
+      <ol class="passinhos">
+        <li><span>No notebook, abra:</span></li>
+      </ol>
+      <div class="copiar"><span>chrome://flags/#unsafely-treat-insecure-origin-as-secure</span><button class="btn peq" data-copiar="chrome://flags/#unsafely-treat-insecure-origin-as-secure">Copiar</button></div>
+      <ol class="passinhos" start="2" style="counter-reset:p 1">
+        <li><span>Mude para <b>Enabled</b> e cole na caixa o endereço do PC:</span></li>
+      </ol>
+      <div id="origemNote"></div>
+      <ol class="passinhos" style="counter-reset:p 2">
+        <li><span>Clique em <b>Relaunch</b> e abra o link do passo 1. Clique em <b>Ativar som e microfone</b>.</span></li>
+        <li><span>Se o Windows do PC perguntar, permita o <b>Node.js</b> na rede privada.</span></li>
+      </ol>
+      <div class="dica" style="margin-top:18px">💤 <b>Bônus:</b> com o Vigia ligado, o notebook pode até <b>ligar o PC</b> quando você abrir a tampa (Wake-on-LAN). Veja "Ligar o PC abrindo o notebook" no README.</div>
+    </section>
+
+    <!-- 9 · comandos -->
+    <section data-passo="comandos" data-titulo="Comandos de voz">
+      <span class="tag">Passo 9</span>
+      <h1>O que você pode dizer</h1>
+      <p class="lead">Fale perto do microfone, sem precisar de palavra de ativação. Frases soltas de conversa não disparam nada.</p>
+      <input type="search" id="buscaCmd" placeholder="Procurar comando… (ex.: áudio, link, tempo)" aria-label="Procurar comando">
+      <div class="filtros" id="filtrosCmd"></div>
+      <div class="cmds" id="cmds"></div>
+    </section>
+
+    <!-- 10 · pronto -->
+    <section data-passo="pronto" data-titulo="Tudo pronto">
+      <span class="tag">Último passo</span>
+      <h1 id="prontoTitulo">Confira e ligue o Vigia</h1>
+      <p class="lead">Tudo o que você escolheu já foi salvo no arquivo <kbd>.env</kbd>, só no seu PC.</p>
+      <div class="resumo" id="resumo"></div>
+      <h2>Ligar sozinho</h2>
+      <label class="inter"><div><b>Iniciar com o Windows</b><span>O Vigia liga sozinho, escondido, sempre que você entrar no Windows.</span></div><span class="chave"><input type="checkbox" id="inicioWindows"><i></i></span></label>
+      <div class="linha" style="margin-top:10px"><button class="btn pri" id="ligarVigia">🔮 Ligar o Vigia agora</button><button class="btn" id="fechar">Fechar o assistente</button></div>
+      <div class="res" id="resLigar" role="status"></div>
+      <p class="peq" style="margin-top:18px">Para mudar algo depois, rode o <b>CONFIGURAR.bat</b> de novo.</p>
+    </section>
+  </main>
+</div>
+<div class="nav"><button class="btn" id="voltar">← Voltar</button><button class="btn pri" id="proximo">Próximo →</button></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+'use strict';
+const T = new URLSearchParams(location.hash.slice(1)).get('t') || sessionStorage.getItem('vigiaToken') || '';
+try { if (T) { sessionStorage.setItem('vigiaToken', T); history.replaceState(null, '', location.pathname); } } catch (e) {}
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const api = async (rota, corpo) => {
+  const r = await fetch('/api/' + rota, { method: corpo ? 'POST' : 'GET', headers: { 'X-Token': T, 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined });
+  if (r.status === 403) throw new Error('Abra o assistente pelo CONFIGURAR.bat (o link mudou).');
+  return r;
+};
+const apiJson = async (rota, corpo) => (await api(rota, corpo)).json();
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function toast(t, mal) { const e = $('#toast'); e.textContent = t; e.className = 'toast ver' + (mal ? ' mal' : ''); clearTimeout(e._t); e._t = setTimeout(() => e.className = 'toast', 2600); }
+function res(id, tipo, txt) { const e = $(id); e.className = 'res ' + tipo; e.innerHTML = tipo === 'esp' ? '<span class="giro"></span>' + esc(txt) : esc(txt); }
+
+/* ---------- céu ---------- */
+(() => {
+  const c = $('#ceu'), x = c.getContext('2d'); let est = [], W, H;
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  function tam() { W = c.width = innerWidth * dpr; H = c.height = innerHeight * dpr; est = Array.from({ length: 140 }, () => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.3 * dpr + .2, f: Math.random() * 6.28, v: .004 + Math.random() * .01 })); }
+  tam(); addEventListener('resize', tam);
+  const parado = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  (function quadro() {
+    x.clearRect(0, 0, W, H);
+    const g = x.createRadialGradient(W * .85, H * -.1, 0, W * .85, H * -.1, W * .9); g.addColorStop(0, 'rgba(255,179,92,.10)'); g.addColorStop(1, 'rgba(5,6,11,0)'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+    for (const s of est) { s.f += s.v; x.globalAlpha = .25 + .55 * Math.abs(Math.sin(s.f)); x.fillStyle = '#fff'; x.beginPath(); x.arc(s.x, s.y, s.r, 0, 6.28); x.fill(); }
+    x.globalAlpha = 1; if (!parado) requestAnimationFrame(quadro);
+  })();
+})();
+
+/* ---------- estado ---------- */
+let E = null;            // estado vindo do PC
+const V = {};            // valores a salvar
+const val = (k, d = '') => (k in V ? V[k] : (E?.valores?.[k] ?? d));
+
+/* ---------- passos ---------- */
+const SECOES = $$('section[data-passo]');
+let atual = 0;
+$('#passos').innerHTML = SECOES.map((s, i) => `<li><button data-ir="${i}"><span class="n">${i ? i : '★'}</span><span class="rot">${esc(s.dataset.titulo)}</span></button></li>`).join('');
+const vistos = new Set([0]);
+function ir(i) {
+  i = Math.max(0, Math.min(SECOES.length - 1, i));
+  SECOES[atual].classList.remove('ativo'); atual = i; SECOES[i].classList.add('ativo'); vistos.add(i);
+  $$('#passos li').forEach((li, j) => { li.classList.toggle('atual', j === i); li.classList.toggle('feito', vistos.has(j) && j !== i); });
+  $$('#passos li')[i]?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  $('#voltar').style.visibility = i ? 'visible' : 'hidden';
+  $('#proximo').style.display = i === 0 || i === SECOES.length - 1 ? 'none' : ''; // na boas-vindas já tem o "Começar"
+  scrollTo({ top: 0, behavior: 'smooth' });
+  if (SECOES[i].dataset.passo === 'pronto') montarResumo();
+  if (SECOES[i].dataset.passo === 'whatsapp') atualizarWhats();
+}
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-ir]'); if (b) { salvar(true); ir(Number(b.dataset.ir)); } });
+$('#voltar').onclick = () => ir(atual - 1);
+$('#proximo').onclick = async () => { await salvar(true); ir(atual + 1); };
+
+/* ---------- salvar ---------- */
+let ultimoSalvo = '';
+async function salvar(silencioso) {
+  coletar();
+  const txt = JSON.stringify(V);
+  if (txt === ultimoSalvo || !Object.keys(V).length) return true;
+  try {
+    const r = await apiJson('salvar', { valores: V });
+    if (!r.ok) throw new Error(r.erro || 'erro');
+    ultimoSalvo = txt; if (!silencioso || Object.keys(V).length) toast('Salvo ✓');
+    return true;
+  } catch (e) { toast('Não salvei: ' + e.message, true); return false; }
+}
+function coletar() {
+  const radio = (n) => $(`input[name="${n}"]:checked`)?.value;
+  if (radio('RESUMO_IA')) V.RESUMO_IA = radio('RESUMO_IA');
+  const g = $('#gemini').value.trim(); if (g) V.GEMINI_API_KEY = g;
+  V.WHATSAPP = $('#WHATSAPP').checked ? '1' : '0';
+  if ($('#usarEmail').checked) {
+    V.EMAIL_USUARIO = $('#EMAIL_USUARIO').value.trim(); V.IMAP_HOST = $('#IMAP_HOST').value.trim(); V.IMAP_PORTA = $('#IMAP_PORTA').value.trim() || '993';
+    const s = $('#EMAIL_SENHA').value; if (s) V.EMAIL_SENHA = s;
+  } else V.EMAIL_USUARIO = '';
+  V.VOZ = $('#VOZ').checked ? '1' : '0';
+  if (radio('VOZ_MICROSOFT')) { V.VOZ_MICROSOFT = radio('VOZ_MICROSOFT'); V.VOZ_MOTOR = 'microsoft'; }
+  V.SAUDACAO_NOME = $('#SAUDACAO_NOME').value.trim();
+  if (radio('LER_SOB_DEMANDA')) V.LER_SOB_DEMANDA = radio('LER_SOB_DEMANDA');
+  V.SILENCIO = $('#usarSilencio').checked ? `${$('#silDe').value}-${$('#silAte').value}` : '';
+  for (const c of $$('[data-chips]')) V[c.dataset.chips] = lerChips(c).join(c.dataset.sep);
+  V.SAIDA_VOZ = $('#SAIDA_VOZ').value; V.MICROFONE_ORIGEM = $('#MICROFONE_ORIGEM').value;
+}
+
+/* ---------- voz (prévia) ---------- */
+let audioAtual = null;
+async function ouvir(texto, voz, botao) {
+  try { audioAtual?.pause(); } catch (e) {}
+  const alvo = botao?.closest('.opcao,.cmd,.linha') || botao;
+  alvo?.classList.add('tocando');
+  const fim = () => alvo?.classList.remove('tocando');
+  if (E?.ffmpeg) {
+    try {
+      const r = await api('voz', { texto, voz: voz || val('VOZ_MICROSOFT', 'pt-BR-FranciscaNeural') });
+      if (r.ok) {
+        const a = new Audio(URL.createObjectURL(await r.blob())); audioAtual = a;
+        await new Promise((ok) => { a.onended = a.onerror = ok; a.play().catch(ok); }); fim(); return;
+      }
+    } catch (e) {}
+  }
+  // sem ffmpeg (ou sem internet): a voz do próprio navegador
+  await new Promise((ok) => { const u = new SpeechSynthesisUtterance(texto); u.lang = 'pt-BR'; u.onend = u.onerror = ok; speechSynthesis.cancel(); speechSynthesis.speak(u); });
+  fim();
+}
+
+/* ---------- 0 · sistema ---------- */
+function mostrarSistema() {
+  const p = (ok, t) => `<span class="pilula ${ok ? 'ok' : 'mal'}"><b></b>${esc(t)}</span>`;
+  $('#estadosSistema').innerHTML = p(true, 'Node.js ' + E.node) + p(E.ffmpeg, E.ffmpeg ? 'ffmpeg instalado' : 'ffmpeg ausente (voz do Windows)') +
+    p(E.envExiste, E.envExiste ? 'Configuração encontrada' : 'Primeira configuração') + (E.vigiaRodando ? p(false, 'O Vigia está ligado agora') : '');
+}
+
+/* ---------- 1 · como funciona ---------- */
+const EXPLICA = [
+  ['📱 Chega a mensagem', 'Uma mensagem no WhatsApp (texto, áudio, foto, link) ou um e-mail. Conversas arquivadas e grupos de baixa prioridade não interrompem você.'],
+  ['🖥️ O Vigia lê', 'O Vigia fica ligado no seu PC, conectado como "aparelho conectado". Ele não aparece online, não marca como lido e nunca envia nada sem você mandar. Áudios são transcritos.'],
+  ['🧠 A IA resume', 'O Gemini transforma a mensagem numa frase curta e decide a prioridade: urgente, normal ou baixa. E-mail de propaganda vira silêncio.'],
+  ['🔊 Ele te avisa', 'Notificação do Windows e voz: "Mensagem de Ana". Você diz "leia", "ouça o áudio", "abra o link" ou "responda", e ele faz.'],
+];
+$$('.no').forEach((n) => { const f = () => { $$('.no').forEach((m) => m.classList.toggle('sel', m === n)); const [t, d] = EXPLICA[n.dataset.no]; $('#explica').innerHTML = `<b>${t}</b><div class="sub" style="margin-top:6px">${d}</div>`; }; n.onclick = f; n.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); f(); } }; });
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+let simulando = false;
+$('#simular').onclick = async () => {
+  if (simulando) return; simulando = true; $('#simular').disabled = true;
+  const cel = $('#simCel'), note = $('#simNote'); cel.innerHTML = ''; note.innerHTML = '';
+  const acende = (i) => $$('.no').forEach((n) => n.classList.toggle('aceso', Number(n.dataset.no) === i));
+  const add = (alvo, cls, txt) => { const d = document.createElement('div'); d.className = cls; d.textContent = txt; alvo.appendChild(d); return d; };
+  const lerSob = val('LER_SOB_DEMANDA', '1') !== '0';
+  try {
+    acende(0); add(cel, 'bolha ela', 'Oi! Chego às sete, pode ser?'); await espera(1100);
+    acende(1); add(note, 'peq', '🖥️ lendo…'); await espera(900);
+    acende(2); add(note, 'peq', '🧠 resumo: "Ana avisa que chega às sete" · prioridade normal'); await espera(1100);
+    acende(3);
+    const aviso = lerSob ? 'Mensagem de Ana.' : 'Mensagem de Ana. Chego às sete, pode ser?';
+    add(note, 'fala', '🔊 ' + aviso); await ouvir(aviso);
+    if (lerSob) { add(note, 'voce', '🎙️ você: "leia"'); await espera(500); add(note, 'fala', '🔊 Oi! Chego às sete, pode ser?'); await ouvir('Oi! Chego às sete, pode ser?'); }
+    add(note, 'voce', '🎙️ você: "responda"'); await espera(400);
+    add(note, 'fala', '🔊 Qual a resposta?'); await ouvir('Qual a resposta?');
+    add(note, 'voce', '🎙️ você: "pode sim, te espero"'); await espera(400);
+    add(note, 'fala', '🔊 Vou enviar: pode sim, te espero. Posso enviar?'); await ouvir('Vou enviar: pode sim, te espero. Posso enviar?');
+    add(note, 'voce', '🎙️ você: "pode"'); await espera(500);
+    add(cel, 'bolha eu', 'pode sim, te espero ✓✓'); add(note, 'fala', '✓ Enviado para Ana.');
+    acende(-1);
+  } finally { simulando = false; $('#simular').disabled = false; }
+};
+
+/* ---------- 2 · IA ---------- */
+$$('[data-olho]').forEach((b) => b.onclick = () => { const i = $('#' + b.dataset.olho); i.type = i.type === 'password' ? 'text' : 'password'; });
+const mostrarGemini = () => { $('#blocoGemini').style.display = $('input[name=RESUMO_IA]:checked')?.value === 'simples' ? 'none' : ''; };
+$$('input[name=RESUMO_IA]').forEach((r) => r.onchange = mostrarGemini);
+$('#testarGemini').onclick = async () => {
+  res('#resGemini', 'esp', 'Perguntando ao Google…');
+  try { const r = await apiJson('testar/gemini', { chave: $('#gemini').value.trim() }); res('#resGemini', r.ok ? 'ok' : 'mal', (r.ok ? '✓ ' : '✗ ') + r.msg); }
+  catch (e) { res('#resGemini', 'mal', e.message); }
+};
+
+/* ---------- 3 · WhatsApp ---------- */
+let pollWhats = null;
+const mostrarWhatsBloco = () => { $('#blocoWhats').style.display = $('#WHATSAPP').checked ? '' : 'none'; };
+$('#WHATSAPP').onchange = mostrarWhatsBloco;
+async function atualizarWhats() {
+  try {
+    const w = await apiJson('whatsapp/estado');
+    const salvo = w.salvo && w.estado !== 'qr';
+    $('#whatsConectado').style.display = salvo || w.estado === 'conectado' ? '' : 'none';
+    $('#whatsParear').style.display = salvo || w.estado === 'conectado' ? 'none' : '';
+    if (w.salvo) $('#whatsQuem').textContent = `${w.salvo.nome ? w.salvo.nome + ' · ' : ''}${w.salvo.numero}`;
+    if (w.estado === 'qr') { $('#qrbox').innerHTML = `<img src="${w.qr}" alt="QR code para conectar o WhatsApp">`; res('#resWhats', 'esp', 'Esperando você escanear… (o código muda sozinho a cada 20 s)'); }
+    else if (w.estado === 'conectando') res('#resWhats', 'esp', 'Gerando o QR code…');
+    else if (w.estado === 'conectado') { res('#resWhats', 'ok', '✓ Conectado!'); toast('WhatsApp conectado ✓'); pararPoll(); }
+    else if (w.estado === 'erro') { res('#resWhats', 'mal', '✗ ' + w.erro); pararPoll(); }
+    return w;
+  } catch (e) { res('#resWhats', 'mal', e.message); pararPoll(); }
+}
+const pararPoll = () => { clearInterval(pollWhats); pollWhats = null; $('#whatsQr').disabled = false; };
+$('#whatsQr').onclick = async () => {
+  if (E.vigiaRodando) { res('#resWhats', 'mal', '✗ O Vigia está ligado e já usa o WhatsApp. Feche o Vigia (Gerenciador de Tarefas → Node.js) e tente de novo.'); return; }
+  $('#whatsQr').disabled = true; res('#resWhats', 'esp', 'Gerando o QR code…');
+  await apiJson('whatsapp/conectar', {}); clearInterval(pollWhats); pollWhats = setInterval(atualizarWhats, 1500); atualizarWhats();
+};
+$('#whatsOutro').onclick = async () => {
+  if (!confirm('Desconectar o WhatsApp atual deste PC e conectar outro número?')) return;
+  const r = await apiJson('whatsapp/esquecer', {}); if (r.ok === false) { toast(r.msg, true); return; }
+  $('#qrbox').innerHTML = '<span class="peq" style="padding:20px;text-align:center">O QR code aparece aqui.</span>'; $('#resWhats').className = 'res';
+  atualizarWhats();
+};
+
+/* ---------- 4 · e-mail ---------- */
+const PROVEDORES = [
+  ['Gmail', 'imap.gmail.com', 993, 'No Gmail, use uma <b>senha de app</b> (não a sua senha normal): ative a verificação em duas etapas e crie em <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>.'],
+  ['Outlook / Hotmail', 'outlook.office365.com', 993, 'Contas pessoais da Microsoft com verificação em duas etapas precisam de uma <b>senha de app</b> (conta Microsoft → Segurança). Algumas contas de empresa bloqueiam IMAP: confira com o TI.'],
+  ['Yahoo', 'imap.mail.yahoo.com', 993, 'No Yahoo, gere uma <b>senha de app</b> em Segurança da conta.'],
+  ['iCloud', 'imap.mail.me.com', 993, 'No iCloud, crie uma <b>senha específica para app</b> em appleid.apple.com. O usuário é o e-mail completo.'],
+  ['Locaweb', 'email-ssl.com.br', 993, 'Use o e-mail completo e a senha normal da caixa.'],
+  ['Hostinger', 'imap.hostinger.com', 993, 'Use o e-mail completo e a senha da caixa.'],
+  ['Zoho', 'imap.zoho.com', 993, 'Ative o IMAP nas configurações do Zoho Mail antes.'],
+  ['Outro', '', 993, 'Procure "IMAP" na ajuda do seu provedor: ele informa o servidor (ex.: imap.seudominio.com) e a porta (quase sempre 993).'],
+];
+$('#provedores').innerHTML = PROVEDORES.map((p, i) => `<button type="button" data-prov="${i}">${esc(p[0])}</button>`).join('');
+$$('[data-prov]').forEach((b) => b.onclick = () => {
+  const [, host, porta, dica] = PROVEDORES[b.dataset.prov];
+  $$('[data-prov]').forEach((x) => x.classList.toggle('sel', x === b));
+  if (host) $('#IMAP_HOST').value = host; else { $('#IMAP_HOST').value = ''; $('#IMAP_HOST').focus(); }
+  $('#IMAP_PORTA').value = porta; $('#dicaProv').innerHTML = '💡 ' + dica; $('#dicaProv').style.display = '';
+});
+$('#EMAIL_USUARIO').addEventListener('change', () => { // adivinha o provedor pelo domínio
+  const d = ($('#EMAIL_USUARIO').value.split('@')[1] || '').toLowerCase();
+  const m = { 'gmail.com': 0, 'googlemail.com': 0, 'outlook.com': 1, 'hotmail.com': 1, 'live.com': 1, 'outlook.com.br': 1, 'hotmail.com.br': 1, 'yahoo.com': 2, 'yahoo.com.br': 2, 'icloud.com': 3, 'me.com': 3 }[d];
+  if (m !== undefined && !$('#IMAP_HOST').value) $$('[data-prov]')[m].click();
+});
+const mostrarEmail = () => { $('#blocoEmail').style.display = $('#usarEmail').checked ? '' : 'none'; };
+$('#usarEmail').onchange = mostrarEmail;
+$('#testarEmail').onclick = async () => {
+  res('#resEmail', 'esp', 'Conectando na sua caixa de e-mail…');
+  try {
+    const r = await apiJson('testar/email', { usuario: $('#EMAIL_USUARIO').value.trim(), senha: $('#EMAIL_SENHA').value, host: $('#IMAP_HOST').value.trim(), porta: $('#IMAP_PORTA').value || 993 });
+    res('#resEmail', r.ok ? 'ok' : 'mal', (r.ok ? '✓ ' : '✗ ') + r.msg);
+  } catch (e) { res('#resEmail', 'mal', e.message); }
+};
+
+/* ---------- 5 · voz ---------- */
+const VOZES = [
+  ['pt-BR-FranciscaNeural', 'Francisca', '👩', 'Clara e acolhedora', 'Oi! Eu sou a Francisca. Mensagem de Ana, no grupo Família.'],
+  ['pt-BR-ThalitaMultilingualNeural', 'Thalita', '👩‍🦱', 'Jovem e natural', 'Oi! Eu sou a Thalita. Mensagem de Ana, no grupo Família.'],
+  ['pt-BR-AntonioNeural', 'Antonio', '👨', 'Grave e calma', 'Oi! Eu sou o Antonio. Mensagem de Ana, no grupo Família.'],
+];
+$('#vozes').innerHTML = VOZES.map(([id, nome, rosto, d]) => `<label class="opcao voz"><input type="radio" name="VOZ_MICROSOFT" value="${id}">
+  <div class="linha" style="justify-content:space-between"><div class="rosto">${rosto}</div><div class="ondas"><i></i><i></i><i></i><i></i><i></i></div></div>
+  <div><div class="t">${nome}</div><div class="d">${d}</div></div><button type="button" class="btn peq" data-ouvir="${id}">▶ Ouvir</button></label>`).join('');
+$$('[data-ouvir]').forEach((b) => b.onclick = (e) => { e.preventDefault(); const v = VOZES.find((x) => x[0] === b.dataset.ouvir); b.closest('label').querySelector('input').checked = true; ouvir(v[4], v[0], b); });
+const saud = () => { const h = new Date().getHours(); const oi = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; const n = $('#SAUDACAO_NOME').value.trim(); return `${oi}${n ? ', ' + n : ''}!`; };
+$('#SAUDACAO_NOME').oninput = () => $('#previaSaud').textContent = saud();
+$('#ouvirSaud').onclick = (e) => ouvir(saud().replace(/\bSr\.\s*/i, 'senhor ').replace(/\bSra\.\s*/i, 'senhora ') + ' Hoje vai fazer sol, com máxima de vinte e oito graus.', null, e.currentTarget);
+for (const s of ['#silDe', '#silAte']) $(s).innerHTML = Array.from({ length: 24 }, (_, h) => `<option value="${h}">${String(h).padStart(2, '0')}:00</option>`).join('');
+const mostrarSilencio = () => { $('#blocoSilencio').style.display = $('#usarSilencio').checked ? '' : 'none'; };
+$('#usarSilencio').onchange = mostrarSilencio;
+
+/* ---------- 6 · chips ---------- */
+function lerChips(c) { return $$('span', c).map((s) => s.dataset.v); }
+function addChip(c, v) {
+  v = v.trim(); if (!v || lerChips(c).includes(v)) return;
+  if (c.dataset.chips === 'PRONUNCIA' && !/^[^=]+=[^=]+$/.test(v)) { toast('Use o formato Nome=Jeito de falar', true); return; }
+  const s = document.createElement('span'); s.dataset.v = v; s.innerHTML = `${esc(v)}<button type="button" aria-label="Remover ${esc(v)}">×</button>`;
+  s.querySelector('button').onclick = () => s.remove(); c.insertBefore(s, $('input', c));
+}
+for (const c of $$('[data-chips]')) {
+  const i = $('input', c);
+  c.onclick = (e) => { if (e.target === c) i.focus(); };
+  i.onkeydown = (e) => {
+    if (e.key === 'Enter' || (e.key === ',' && c.dataset.sep === ',') || (e.key === ';' && c.dataset.sep === ';')) { e.preventDefault(); addChip(c, i.value); i.value = ''; }
+    else if (e.key === 'Backspace' && !i.value) $$('span', c).pop()?.remove();
+  };
+  i.onblur = () => { if (i.value.trim()) { addChip(c, i.value); i.value = ''; } };
+}
+$('#ouvirPron').onclick = (e) => {
+  const nome = $('#testePron').value.trim(); if (!nome) return;
+  let falado = nome;
+  for (const p of lerChips($('[data-chips=PRONUNCIA]'))) { const [a, b] = p.split('='); falado = falado.replace(new RegExp(`(^|[^\\p{L}])${a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'giu'), `$1${b}`); }
+  ouvir(`Mensagem de ${falado}.`, null, e.currentTarget);
+};
+
+/* ---------- 7 · cidade ---------- */
+let tBusca;
+$('#buscaCidade').oninput = () => {
+  clearTimeout(tBusca); const q = $('#buscaCidade').value.trim();
+  if (q.length < 2) { $('#resultadosCidade').innerHTML = ''; return; }
+  tBusca = setTimeout(async () => {
+    try {
+      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=pt&format=json`).then((x) => x.json());
+      const lista = r.results || [];
+      $('#resultadosCidade').innerHTML = lista.length ? lista.map((c, i) => `<button role="option" data-c="${i}"><b>${esc(c.name)}</b> <span class="sub">${esc([c.admin1, c.country].filter(Boolean).join(', '))}</span></button>`).join('') : '<span class="peq">Nenhuma cidade com esse nome.</span>';
+      $$('[data-c]').forEach((b) => b.onclick = () => escolherCidade(lista[b.dataset.c]));
+    } catch (e) { $('#resultadosCidade').innerHTML = '<span class="peq">Sem internet para procurar agora.</span>'; }
+  }, 350);
+};
+async function escolherCidade(c) {
+  V.CLIMA_CIDADE = c.name; V.CLIMA_LAT = String(Math.round(c.latitude * 100) / 100); V.CLIMA_LON = String(Math.round(c.longitude * 100) / 100);
+  $('#resultadosCidade').innerHTML = ''; $('#buscaCidade').value = '';
+  await mostrarCidade();
+}
+async function mostrarCidade() {
+  const nome = val('CLIMA_CIDADE', 'São Paulo'), lat = val('CLIMA_LAT', '-23.55'), lon = val('CLIMA_LON', '-46.63');
+  $('#cidadeEscolhida').innerHTML = `<div class="peq">Cidade escolhida</div><h2 style="margin:4px 0 10px">📍 ${esc(nome)}</h2><div class="peq">carregando a previsão…</div>`;
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=auto&forecast_days=1&current=temperature_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max`).then((x) => x.json());
+    const d = r.daily, agora = Math.round(r.current.temperature_2m), chuva = d.precipitation_probability_max?.[0] ?? 0;
+    const frase = `Agora está fazendo ${agora} graus em ${nome}. Máxima de ${Math.round(d.temperature_2m_max[0])} e mínima de ${Math.round(d.temperature_2m_min[0])}. ${chuva >= 60 ? 'Leve guarda-chuva!' : chuva >= 30 ? `${chuva} por cento de chance de chuva.` : 'Sem previsão de chuva.'}`;
+    $('#cidadeEscolhida').innerHTML = `<div class="peq">Cidade escolhida</div><h2 style="margin:4px 0 10px">📍 ${esc(nome)}</h2>
+      <div class="tempo"><div class="graus">${agora}°</div><div class="sub">máx ${Math.round(d.temperature_2m_max[0])}° · mín ${Math.round(d.temperature_2m_min[0])}°<br>🌧️ ${chuva}% de chance de chuva</div></div>
+      <div class="linha" style="margin-top:14px"><button class="btn peq" id="ouvirTempo">▶ Ouvir como o Vigia fala</button></div>`;
+    $('#ouvirTempo').onclick = (e) => ouvir(frase, null, e.currentTarget);
+  } catch (e) { $('#cidadeEscolhida').innerHTML += '<div class="peq">Sem internet para mostrar a previsão agora (a cidade foi escolhida mesmo assim).</div>'; }
+}
+
+/* ---------- 8 · notebook ---------- */
+function mostrarNotebook() {
+  const links = E.notebook || [];
+  $('#linksNote').innerHTML = links.length ? links.map((l) => `<div class="copiar"><span>${esc(l)}</span><button class="btn peq" data-copiar="${esc(l)}">Copiar</button></div>`).join('') + '<p class="peq">Esse link tem uma chave secreta: só quem tem o link acessa. Não compartilhe.</p>'
+    : '<div class="dica aviso">Não achei a rede local deste PC. Conecte o PC ao Wi-Fi ou cabo e abra o assistente de novo.</div>';
+  $('#origemNote').innerHTML = links.map((l) => { const o = l.split('/?')[0]; return `<div class="copiar"><span>${esc(o)}</span><button class="btn peq" data-copiar="${esc(o)}">Copiar</button></div>`; }).join('');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-copiar]'); if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.copiar); b.textContent = 'Copiado ✓'; setTimeout(() => b.textContent = 'Copiar', 1500); } catch (er) { toast('Selecione e copie com Ctrl+C', true); }
+});
+
+/* ---------- 9 · comandos ---------- */
+const CMDS = [
+  ['Mensagens', '"Leia"', 'Lê a última mensagem avisada.'],
+  ['Mensagens', '"Leia a última mensagem da Ana"', 'Lê a última mensagem daquela pessoa ou grupo.'],
+  ['Mensagens', '"Responda"', 'Responde a última mensagem: você dita, ele lê de volta e só envia com "pode".'],
+  ['Mensagens', '"Responda a Ana"', 'Responde a pessoa pelo nome.'],
+  ['Mensagens', '"Envia mensagem para o Bruno dizendo que chego às sete"', 'Acha o contato pelo som do nome e confirma antes de enviar.'],
+  ['Áudios', '"Ouça o áudio"', 'Toca o áudio original da última mensagem.'],
+  ['Áudios', '"Ouça o último áudio da Ana"', 'Toca o último áudio daquela pessoa.'],
+  ['Áudios', '"Mande um áudio para a Ana"', 'Grava a sua voz, limpa o ruído e envia como áudio do WhatsApp.'],
+  ['Áudios', '"Responda a Ana com áudio"', 'Responde gravando a sua voz.'],
+  ['Links', '"Abra o link"', 'Abre no navegador do PC o último link que chegou.'],
+  ['Links', '"Abra o link que a Ana mandou"', 'Abre o último link daquela pessoa.'],
+  ['Dia a dia', '"Que horas são?"', 'Diz a hora e a data.'],
+  ['Dia a dia', '"Vai chover hoje?"', 'Temperatura de agora e a previsão do dia.'],
+  ['Dia a dia', '"Lê meus e-mails de hoje"', 'Resumo dos e-mails de pessoas que chegaram hoje.'],
+  ['Dia a dia', '"Me lembra às três de ligar pro cliente"', 'Cria um lembrete. Também: "daqui a 20 minutos", "amanhã de manhã".'],
+  ['Controle', '"Cancelar"', 'A qualquer momento: para o que estiver falando, ouvindo ou gravando. Nada é enviado.'],
+  ['Controle', '"Repete"', 'Fala de novo a última coisa que disse.'],
+  ['Controle', '"Até amanhã"', 'Despede-se e desliga o PC em 15 segundos ("cancelar" desfaz).'],
+];
+let catSel = 'Todos';
+const CATS = ['Todos', ...new Set(CMDS.map((c) => c[0]))];
+$('#filtrosCmd').innerHTML = CATS.map((c) => `<button type="button" data-cat="${c}">${c}</button>`).join('');
+function mostrarCmds() {
+  const q = $('#buscaCmd').value.trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const lista = CMDS.filter(([c, d, f]) => (catSel === 'Todos' || c === catSel) && (!q || (d + ' ' + f + ' ' + c).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(q)));
+  $('#cmds').innerHTML = lista.map(([c, d, f]) => `<div class="cmd"><div class="cat">${c}</div><div class="diga">${esc(d)}</div><div class="faz">${esc(f)}</div></div>`).join('') || '<span class="peq">Nenhum comando com esse texto.</span>';
+  $$('[data-cat]').forEach((b) => b.classList.toggle('sel', b.dataset.cat === catSel));
+}
+$('#buscaCmd').oninput = mostrarCmds;
+$$('[data-cat]').forEach((b) => b.onclick = () => { catSel = b.dataset.cat; mostrarCmds(); });
+
+/* ---------- 10 · resumo ---------- */
+async function montarResumo() {
+  await salvar(true);
+  const w = await apiJson('whatsapp/estado').catch(() => ({}));
+  const itens = [];
+  const ia = val('RESUMO_IA', 'gemini');
+  const temChave = $('#gemini').value.trim() || E.valores.GEMINI_API_KEY_DEFINIDA;
+  itens.push(ia === 'simples' ? ['pula', '🧠', 'Inteligência', 'Sem IA (resumo simples)', 2] : temChave ? ['ok', '🧠', 'Inteligência', 'Gemini com chave salva', 2] : ['falta', '🧠', 'Inteligência', 'Falta a chave do Gemini', 2]);
+  itens.push(val('WHATSAPP', '1') === '0' ? ['pula', '💬', 'WhatsApp', 'Desligado', 3] : (w.salvo || w.estado === 'conectado') ? ['ok', '💬', 'WhatsApp', 'Conectado', 3] : ['falta', '💬', 'WhatsApp', 'Falta escanear o QR code (ou faça isso quando o Vigia ligar)', 3]);
+  const email = val('EMAIL_USUARIO');
+  itens.push(!email ? ['pula', '✉️', 'E-mail', 'Desligado', 4] : (email && ($('#EMAIL_SENHA').value || E.valores.EMAIL_SENHA_DEFINIDA)) ? ['ok', '✉️', 'E-mail', esc(email), 4] : ['falta', '✉️', 'E-mail', 'Falta a senha', 4]);
+  const voz = VOZES.find((v) => v[0] === val('VOZ_MICROSOFT', 'pt-BR-FranciscaNeural'));
+  itens.push(val('VOZ', '1') === '0' ? ['pula', '🔊', 'Voz', 'Desligada (só notificação)', 5] : ['ok', '🔊', 'Voz', `${voz ? voz[1] : 'Francisca'}${val('SAUDACAO_NOME') ? ' · te chama de ' + esc(val('SAUDACAO_NOME')) : ''}`, 5]);
+  itens.push(['ok', '📍', 'Cidade', esc(val('CLIMA_CIDADE', 'São Paulo')), 7]);
+  $('#resumo').innerHTML = itens.map(([cls, ic, t, d, passo]) => `<div class="item ${cls}"><div class="st">${cls === 'ok' ? '✓' : cls === 'falta' ? '!' : '–'}</div><div><b>${ic} ${t}</b><small>${d}</small></div><button class="btn peq" data-ir="${passo}">Mudar</button></div>`).join('');
+  const faltas = itens.filter((i) => i[0] === 'falta').length;
+  $('#prontoTitulo').textContent = faltas ? 'Quase lá! Confira o que falta' : 'Tudo pronto! 🎉';
+  $('#inicioWindows').checked = !!E.inicioWindows;
+}
+$('#inicioWindows').onchange = async (e) => {
+  const r = await apiJson('inicio-windows', { ligar: e.target.checked });
+  e.target.checked = !!r.ligado; toast(r.ligado ? 'Vai ligar sozinho com o Windows ✓' : 'Não liga mais sozinho', !r.ok);
+};
+$('#ligarVigia').onclick = async () => {
+  await salvar(true); res('#resLigar', 'esp', 'Ligando…');
+  const r = await apiJson('iniciar', {}); res('#resLigar', r.ok ? 'ok' : 'mal', (r.ok ? '✓ ' : '✗ ') + r.msg + ' Você já pode fechar o assistente.');
+  E.vigiaRodando = true;
+};
+$('#fechar').onclick = async () => { await salvar(true); await apiJson('sair', {}).catch(() => {}); document.body.innerHTML = '<div style="display:grid;place-items:center;min-height:100vh;text-align:center;padding:24px"><div><h1>Até logo! 👋</h1><p class="sub">Pode fechar esta aba. Para mudar algo, rode o CONFIGURAR.bat.</p></div></div>'; };
+
+/* ---------- início ---------- */
+(async () => {
+  try { E = await apiJson('estado'); }
+  catch (e) { document.querySelector('main').innerHTML = `<h1>Não consegui falar com o assistente</h1><p class="lead">${esc(e.message)}</p>`; return; }
+  const v = E.valores;
+  mostrarSistema();
+  ($(`input[name=RESUMO_IA][value="${v.RESUMO_IA === 'simples' ? 'simples' : 'gemini'}"]`)).checked = true; mostrarGemini();
+  if (v.GEMINI_API_KEY_DEFINIDA) { $('#gemini').placeholder = '•••••••• (já salva: deixe vazio para manter)'; $('#geminiSalva').textContent = '✓ Uma chave já está salva.'; }
+  $('#WHATSAPP').checked = v.WHATSAPP !== '0'; mostrarWhatsBloco();
+  $('#usarEmail').checked = !!v.EMAIL_USUARIO; mostrarEmail();
+  $('#EMAIL_USUARIO').value = v.EMAIL_USUARIO || ''; $('#IMAP_HOST').value = v.EMAIL_USUARIO ? (v.IMAP_HOST || '') : ''; $('#IMAP_PORTA').value = v.IMAP_PORTA || '993';
+  if (v.EMAIL_SENHA_DEFINIDA) { $('#EMAIL_SENHA').placeholder = '•••••••• (já salva: deixe vazio para manter)'; $('#senhaSalva').textContent = '✓ Uma senha já está salva.'; }
+  const pv = PROVEDORES.findIndex((p) => p[1] && p[1] === v.IMAP_HOST); if (v.EMAIL_USUARIO && pv >= 0) $$('[data-prov]')[pv].classList.add('sel');
+  $('#VOZ').checked = v.VOZ !== '0';
+  ($(`input[name=VOZ_MICROSOFT][value="${v.VOZ_MICROSOFT}"]`) || $('input[name=VOZ_MICROSOFT]')).checked = true;
+  $('#semFfmpeg').style.display = E.ffmpeg ? 'none' : '';
+  $('#SAUDACAO_NOME').value = v.SAUDACAO_NOME || ''; $('#previaSaud').textContent = saud();
+  ($(`input[name=LER_SOB_DEMANDA][value="${v.LER_SOB_DEMANDA === '0' ? '0' : '1'}"]`)).checked = true;
+  const sil = /^(\d{1,2})-(\d{1,2})$/.exec(v.SILENCIO || '');
+  $('#usarSilencio').checked = !!sil; $('#silDe').value = sil ? sil[1] : 22; $('#silAte').value = sil ? sil[2] : 7; mostrarSilencio();
+  for (const c of $$('[data-chips]')) for (const x of String(v[c.dataset.chips] || '').split(c.dataset.sep)) addChip(c, x);
+  $('#SAIDA_VOZ').value = v.SAIDA_VOZ || 'notebook'; $('#MICROFONE_ORIGEM').value = v.MICROFONE_ORIGEM || 'notebook';
+  mostrarNotebook(); mostrarCidade(); mostrarCmds();
+  coletar(); ultimoSalvo = JSON.stringify(V); // o que veio do arquivo não precisa ser salvo de novo
+  ir(0);
+})();
+</script>
+</body>
+</html>

@@ -48,16 +48,13 @@ Ok "Dependencias instaladas"
 # 4) Configuracao
 Titulo "4/5 Configuracao"
 if (-not (Test-Path .env)) { Copy-Item .env.example .env; Ok "Arquivo .env criado a partir do .env.example" } else { Ok ".env ja existe (mantido)" }
-Write-Host "   Preencha no .env: EMAIL_USUARIO, EMAIL_SENHA e GEMINI_API_KEY (https://aistudio.google.com/apikey)."
-if (Pergunta "Abrir o .env no Bloco de Notas agora?") { Start-Process notepad.exe -ArgumentList (Join-Path $raiz '.env') -Wait }
 
-# 5) Iniciar com o Windows
-Titulo "5/5 Iniciar com o Windows"
-if (Pergunta "Ligar o Vigia sozinho sempre que voce entrar no Windows?") {
-  powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'instalar-inicio.ps1')
-} else { Ok "Tudo bem. Para ligar manualmente, use o INICIAR.bat" }
-
+# 5) Assistente (no navegador): explica como funciona, testa a IA e o e-mail, conecta o WhatsApp e grava o .env
+Titulo "5/5 Assistente de configuracao"
+Write-Host "   Vai abrir uma pagina no navegador que explica tudo e configura com voce."
+Write-Host "   Quando terminar, feche a pagina e volte aqui (ou feche esta janela)."
 Write-Host ""
-Write-Host "   Pronto! Agora rode o INICIAR.bat e escaneie o QR code do WhatsApp" -ForegroundColor Cyan
-Write-Host "   (WhatsApp > Aparelhos conectados > Conectar aparelho)." -ForegroundColor Cyan
+node src\configurar.js
+Write-Host ""
+Write-Host "   Para mudar a configuracao depois, rode o CONFIGURAR.bat." -ForegroundColor Cyan
 Write-Host ""

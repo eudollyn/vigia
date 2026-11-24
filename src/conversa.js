@@ -236,6 +236,11 @@ export async function enviarMensagemPorVoz(destino, textoJa, { dizer, enviar }) 
 const semEmoji = (s) => String(s || '').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/\s+/g, ' ').trim();
 async function confirmarEEnviar(item, texto, { dizer, enviar, verbo }) {
   item = { ...item, de: semEmoji(item.de), grupo: item.grupo && semEmoji(item.grupo) };
+  // o ditado do Chrome vem sem pontuação: coloca vírgulas, ponto e interrogação antes de ler de volta e enviar
+  const { pontuar } = await import('./pontuar.js');
+  const antes = texto;
+  texto = await pontuar(texto);
+  if (texto !== antes) log(`voz: pontuado "${texto}"`);
   const para = item.grupo ? `o grupo ${item.grupo}` : item.de;
   let tentativasExtra = 0, repetirTexto = true;
   for (let tentativa = 0; tentativa < 2; tentativa++) {

@@ -49,6 +49,8 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | ✋ | **"Cancelar" a qualquer hora** | Para na hora o que estiver falando, ouvindo ou gravando. Nada é enviado. |
 | 🔁 | **Nada se perde** | Recupera o que chegou com o PC desligado e avisa tudo de uma vez: *"Enquanto eu estava desligado, chegaram mensagens de…"*. |
 | 💤 | **Liga o PC pelo notebook** | Abriu a tampa do notebook com o PC desligado? Ele fala *"Ligando o PC"* e liga o PC pela rede (Wake-on-LAN). |
+| ✍️ | **Pontua o que você dita** | "oi tudo bem chego às sete pode ser" vira *"Oi, tudo bem? Chego às sete, pode ser?"* antes de enviar. |
+| 🪄 | **Assistente de configuração** | Uma página no navegador explica, testa e configura tudo. Nada de editar arquivo. |
 | 🗨️ | **Entende gírias** | Abreviações de chat (vc, blz, pfv, kkkk…) são lidas por extenso. |
 
 ---
@@ -69,7 +71,7 @@ flowchart LR
 
 ---
 
-## 🚀 Instalação em 5 passos
+## 🚀 Instalação em 3 passos
 
 > **Precisa de:** Windows 10/11, conta Google (para a chave grátis do Gemini) e o WhatsApp no celular.
 
@@ -77,29 +79,39 @@ flowchart LR
 Clique no botão verde **⬇ BAIXAR O VIGIA** lá em cima e extraia o `.zip` numa pasta, por exemplo `Documentos\Vigia`.
 
 **2. Rode o instalador**
-Dê dois cliques em **`INSTALAR.bat`**. Ele:
-- confere o **Node.js** (e oferece instalar, se faltar);
-- confere o **ffmpeg** (opcional, para a voz neural e o microfone do PC);
-- instala as dependências;
-- cria o seu arquivo **`.env`** de configuração;
-- pergunta se o Vigia deve ligar junto com o Windows.
+Dê dois cliques em **`INSTALAR.bat`**. Ele confere o **Node.js** e o **ffmpeg** (e oferece instalar o que faltar), instala as dependências e, no fim, **abre o assistente de configuração no navegador**.
 
-**3. Pegue a chave grátis do Gemini**
-Em **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)**, clique em **Create API key** e cole a chave no `.env`:
-```ini
-GEMINI_API_KEY=sua-chave-aqui
-```
+**3. Siga o assistente** ✨
+Uma página passo a passo explica como o Vigia funciona e configura tudo com você, sem editar arquivo nenhum. Veja abaixo.
 
-**4. Configure o e-mail** (opcional)
-```ini
-EMAIL_USUARIO=voce@suaempresa.com.br
-EMAIL_SENHA=sua-senha
-IMAP_HOST=imap.seuprovedor.com     # Gmail: imap.gmail.com · Outlook: outlook.office365.com
-```
-> No Gmail, use uma **senha de app** (Conta Google → Segurança → Senhas de app).
+Para mudar a configuração depois, rode o **`CONFIGURAR.bat`**. Para ligar o Vigia na mão, use o **`INICIAR.bat`**.
 
-**5. Ligue e conecte o WhatsApp**
-Dê dois cliques em **`INICIAR.bat`**. Vai aparecer um **QR code**. No celular, abra **WhatsApp → Aparelhos conectados → Conectar aparelho** e escaneie. Pronto: a conexão fica salva.
+---
+
+## 🪄 Assistente de configuração
+
+<div align="center">
+<img src="docs/assistente-inicio.jpg" alt="Tela inicial do assistente de configuração do Vigia" width="820">
+</div>
+
+| Passo | O que você faz ali |
+|---|---|
+| **Como funciona** | Clica em cada etapa (mensagem → Vigia → IA → voz) e assiste a uma **simulação com som**: chega a mensagem da Ana, o Vigia avisa, você diz "leia" e "responda", e a resposta aparece no WhatsApp. |
+| **Inteligência** | Abre o Google AI Studio, cola a chave e clica em **Testar a chave**: ele diz na hora se a chave funciona, é inválida ou se a cota acabou. |
+| **WhatsApp** | O **QR code aparece na própria página**. Escaneia pelo celular e pronto. |
+| **E-mail** | Escolhe o provedor (Gmail, Outlook, Yahoo, iCloud, Locaweb, Hostinger, Zoho…): o servidor é preenchido sozinho, com a dica de **senha de app** quando precisa. **Testar a conexão** mostra quantos e-mails tem na caixa ou o que deu errado. |
+| **Voz** | **Ouve** a Francisca, a Thalita e o Antonio antes de escolher, digita como quer ser chamado e ouve a saudação. Escolhe entre "só diz de quem é" ou "já lê tudo", e o horário de silêncio. |
+| **Pessoas e grupos** | Contatos privados, grupos de baixa prioridade e pronúncia de nomes, como etiquetas. Dá para **ouvir** como um nome vai ser falado. |
+| **Sua cidade** | Procura a cidade, vê a previsão de hoje e ouve como o Vigia vai falar o tempo. |
+| **Notebook** | Mostra o link do notebook e o endereço para liberar o microfone no Chrome, com botões de copiar. |
+| **Comandos de voz** | Lista com busca e filtros (mensagens, áudios, links, dia a dia, controle). |
+| **Tudo pronto** | Confere o que está configurado e o que falta, liga "iniciar com o Windows" e liga o Vigia. |
+
+<div align="center">
+<img src="docs/assistente-simulacao.jpg" alt="Simulação de uma mensagem no assistente" width="820">
+</div>
+
+> 🔐 O assistente só abre neste PC (endereço `127.0.0.1`), com uma chave nova a cada vez. As senhas ficam só no seu `.env` e nunca aparecem de volta na página.
 
 ---
 
@@ -254,6 +266,8 @@ npm run teste-microfone    # grava uma frase e mostra o que entendeu
 vigia/
 ├── INSTALAR.bat            # instalador guiado
 ├── INICIAR.bat             # liga o Vigia
+├── CONFIGURAR.bat          # abre o assistente de configuração no navegador
+├── docs/                   # imagens do README
 ├── .env.example            # modelo de configuração
 ├── scripts/                # notificação, voz, inicialização com o Windows
 ├── notebook/               # "Ligar o PC" (Wake-on-LAN) que roda no notebook
@@ -267,6 +281,9 @@ vigia/
     ├── comandos.js         # comandos de voz, lembretes, bom dia
     ├── girias.js           # abreviações e gírias lidas por extenso
     ├── ligar-pc.js         # monta o instalador do "Ligar o PC" para o notebook
+    ├── pontuar.js          # pontuação do texto ditado (vírgula, ponto, interrogação)
+    ├── configurar.js       # servidor do assistente de configuração (só 127.0.0.1)
+    ├── configurar.html     # a página do assistente
     ├── lembretes.js        # lembretes por voz
     ├── pendencias.js       # conversas sem resposta
     ├── clima.js            # previsão do tempo
