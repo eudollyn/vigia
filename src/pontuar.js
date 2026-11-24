@@ -7,6 +7,16 @@ import { config } from './config.js';
 const PERGUNTA = /^(que|qual|quais|quando|onde|aonde|como|quem|quanto|quantos|quantas|por ?que|pq|cad[eê]|ser[aá]|ser[aá] que|vc vai|voc[eê] (vai|pode|quer|est[aá]|t[aá]|tem|sabe|viu|acha)|tu (vai|pode|quer)|pode|posso|podemos|vamos|bora|tem como|t[aá] (a[ií]|bem|tudo)|tudo bem|j[aá]|e a[ií]|e voc[eê]|n[eé])\b/i;
 const FIM_PERGUNTA = /\b(n[eé]|ok|t[aá]|beleza|blz|certo|sim ou n[aã]o|pode ser|t[aá] bom|tudo bem|combinado|que tal|viu)$/i;
 
+// quantas palavras foram trocadas, tiradas ou acrescentadas (distância de edição por palavra)
+function distanciaPalavras(a, b) {
+  let ant = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const at = [i];
+    for (let j = 1; j <= b.length; j++) at[j] = Math.min(ant[j] + 1, at[j - 1] + 1, ant[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    ant = at;
+  }
+  return ant[b.length];
+}
 const soPalavras = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 /** Regra simples, sem IA. */
@@ -20,9 +30,8 @@ export function pontuarLocal(texto) {
   return t + (pergunta ? '?' : '.');
 }
 
-async function pontuarGemini(texto) {
+async function pontuarGemini(texto, modelo = config.geminiModelo || 'gemini-flash-lite-latest', espera = 8000) {
   if (!config.geminiChave) throw new Error('sem chave');
-  const modelo = config.geminiModelo || 'gemini-flash-lite-latest';
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiChave },
@@ -30,17 +39,23 @@ async function pontuarGemini(texto) {
       systemInstruction: { parts: [{ text:
         'Você recebe uma mensagem de WhatsApp ditada por voz em português do Brasil, sem pontuação. ' +
         'Devolva a MESMA mensagem só com a pontuação certa (vírgulas, pontos, interrogação, exclamação) e letras maiúsculas onde precisa. ' +
-        'NÃO troque, NÃO corrija, NÃO acrescente e NÃO tire nenhuma palavra, nem gírias ou abreviações. Responda só com a mensagem.' }] },
+        'Ajuste também maiúsculas erradas no meio da frase. Mantenha as palavras, as gírias e o jeito de falar da pessoa: ' +
+        'só corrija uma palavra se ela for claramente um erro do reconhecimento de voz (ex.: "chat de PT" → "ChatGPT"). ' +
+        'NÃO resuma, NÃO reescreva, NÃO acrescente nem tire frases. Responda só com a mensagem.' }] },
       contents: [{ role: 'user', parts: [{ text: texto }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 1000 },
     }),
-    signal: AbortSignal.timeout(8000), // às vezes o Google leva ~10 s; depois disso vale a regra simples
+    signal: AbortSignal.timeout(espera),
   });
   if (!r.ok) throw new Error(`Gemini ${r.status}`);
   const j = await r.json();
   const saida = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim().replace(/^["“]|["”]$/g, '');
-  // segurança: se alguma palavra mudou, não usa
-  if (!saida || soPalavras(saida) !== soPalavras(texto)) throw new Error('a IA mudou palavras');
+  // segurança: aceita pequenas correções do reconhecimento de voz ("chat de PT" → "chat GPT"),
+  // mas se a IA reescreveu a mensagem (mais de 2 palavras ou 10% do texto), não usa
+  if (!saida) throw new Error('resposta vazia');
+  const a = soPalavras(texto).split(' '), b = soPalavras(saida).split(' ');
+  const limite = Math.max(2, Math.ceil(a.length * 0.1));
+  if (distanciaPalavras(a, b) > limite) throw new Error('a IA mudou palavras demais');
   return saida;
 }
 
@@ -49,6 +64,15 @@ export async function pontuar(texto) {
   const t = String(texto || '').replace(/\s+/g, ' ').trim();
   if (!t || /[.,!?;:]/.test(t)) return t;
   if (t.split(' ').length < 3) return pontuarLocal(t); // "sim", "tô indo": não precisa de IA
-  try { return await pontuarGemini(t); }
-  catch { return pontuarLocal(t); }
+  // o modelo principal (até 6 s) e, se ele falhar ou demorar, um reserva (até 6 s); só então a regra simples
+  const modelos = [...new Set([config.geminiModelo || 'gemini-flash-lite-latest', ...(config.geminiReservas || [])])].slice(0, 2);
+  const erros = [];
+  ultimoErro = '';
+  for (const m of modelos) {
+    try { return await pontuarGemini(t, m, 6000); }
+    catch (e) { erros.push(`${m}: ${e.message}`); }
+  }
+  ultimoErro = erros.join(' | ');
+  return pontuarLocal(t);
 }
+export let ultimoErro = ''; // para o log: por que caiu na regra simples
