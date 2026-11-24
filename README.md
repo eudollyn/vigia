@@ -49,6 +49,7 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | ✋ | **"Cancelar" a qualquer hora** | Para na hora o que estiver falando, ouvindo ou gravando. Nada é enviado. |
 | 🔁 | **Nada se perde** | Recupera o que chegou com o PC desligado e avisa tudo de uma vez: *"Enquanto eu estava desligado, chegaram mensagens de…"*. |
 | 💤 | **Liga o PC pelo notebook** | Abriu a tampa do notebook com o PC desligado? Ele fala *"Ligando o PC"* e liga o PC pela rede (Wake-on-LAN). |
+| 🧵 | **Sem metralhadora de avisos** | Mensagens picadas viram um aviso só. Depois de avisar alguém, espera 5 min e diz *"Ana mandou mais 6 mensagens"*. Quer silêncio? *"Silencia a Ana por duas horas"*. |
 | ✍️ | **Pontua o que você dita** | "oi tudo bem chego às sete pode ser" vira *"Oi, tudo bem? Chego às sete, pode ser?"* antes de enviar. |
 | 🪄 | **Assistente de configuração** | Uma página no navegador explica, testa e configura tudo. Nada de editar arquivo. |
 | 🗨️ | **Entende gírias** | Abreviações de chat (vc, blz, pfv, kkkk…) são lidas por extenso. |
@@ -150,6 +151,8 @@ A página tem céu animado, uma esfera que reage à voz, cartões com os último
 | **"Que horas são?"** | Diz a hora e a data. |
 | **"Vai chover hoje?"** / **"Como está o tempo?"** | Temperatura de agora e previsão do dia. |
 | **"Lê meus e-mails de hoje"** | Resumo dos e-mails de pessoas que chegaram hoje (sem propaganda). |
+| **"Silencia a Ana"** / **"…por duas horas"** / **"…o dia todo"** | Mensagens dela só na tela, sem voz (padrão: 1 hora). |
+| **"Volta a avisar a Ana"** | Tira o silêncio e diz quantas mensagens chegaram. |
 | **"Repete"** | Fala de novo a última coisa que disse. |
 | **"Até amanhã"** | Despede-se e desliga o PC em 15 s. |
 | **"Cancelar"** | Em qualquer momento e em qualquer frase: para tudo o que está em andamento (e desfaz o "até amanhã"). |
@@ -185,6 +188,8 @@ O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 | `SAUDACAO_NOME` | Como ela te chama | `Sr. João` |
 | `SILENCIO` | Horário sem voz (só notificação) | `22-7` |
 | `BAIXA_PRIORIDADE` | Grupos que só entram no resumo de hora em hora | `Promoções,Condomínio` |
+| `AGRUPAR_SEGUNDOS` | Junta mensagens picadas até a pessoa parar de mandar | `20` |
+| `PAUSA_MESMA_PESSOA_MIN` | Minutos sem falar da mesma pessoa depois de um aviso | `5` |
 | `PRIVADOS` | Contatos cujo conteúdo não é lido em voz alta | `Mãe,Amor` |
 | `PRONUNCIA` | Como a voz fala certos nomes (só na fala) | `Thalyta=Talíta;Joao=João` |
 | `SAIDA_VOZ` | Onde a voz toca | `notebook` · `pc` · `ambos` |

@@ -11,7 +11,7 @@ import qrTerminal from 'qrcode-terminal';
 import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DADOS } from './config.js';
+import { config, DADOS } from './config.js';
 import { log, notificar, registrarEnvio, registrarEnvioAudio } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
@@ -268,15 +268,17 @@ export function iniciarWhatsApp(aoChegar) {
 
   function enfileirar(chave, dados, linha) {
     let b = buffers.get(chave);
-    if (!b) { b = { ...dados, linhas: [] }; buffers.set(chave, b); }
+    if (!b) { b = { ...dados, linhas: [], inicio: Date.now() }; buffers.set(chave, b); }
     b.linhas.push(linha);
     clearTimeout(b.t);
+    // espera a pessoa parar de mandar (mensagens picadas viram um aviso só), mas no máximo 1 minuto
+    const espera = Math.max(1000, Math.min(config.agruparMs, b.inicio + 60_000 - Date.now()));
     b.t = setTimeout(() => {
       buffers.delete(chave);
       const texto = b.grupo ? b.linhas.map((l) => `${l.autor}: ${l.texto}`).join('\n') : b.linhas.map((l) => l.texto).join('\n');
       const de = b.grupo ? [...new Set(b.linhas.map((l) => l.autor))].slice(0, 3).join(', ') : b.de;
       aoChegar({ canal: 'whatsapp', jid: chave, de, grupo: b.grupo, texto, quantidade: b.linhas.length, ...(b.atrasada ? { atrasada: true } : {}) });
-    }, 4000);
+    }, espera);
   }
 
   async function conectar() {

@@ -68,6 +68,10 @@ export const config = {
   responderVoz: num(e.RESPONDER_VOZ, 1) === 1,
   microfone: (e.MICROFONE || '').trim(),           // vazio = escolhe sozinho (prefere headset/USB)
   micLimiar: num(e.MIC_LIMIAR, -45),               // dB: abaixo disso é silêncio
+  // mensagens picadas: junta as seguidas da mesma conversa até a pessoa ficar X s sem mandar nada (máximo 1 min)
+  agruparMs: num(e.AGRUPAR_SEGUNDOS, 20) * 1000,
+  // depois de avisar alguém, não fala de novo dessa pessoa por X min (só tela); no fim: "mandou mais N mensagens"
+  pausaPessoaMs: num(e.PAUSA_MESMA_PESSOA_MIN, 5) * 60_000,
   janelaMs: num(e.JANELA_SEGUNDOS, 7) * 1000,      // quanto tempo espera o "responda" depois do aviso
   silencio: faixaSilencio(e.SILENCIO ?? '22-7'),
   resumoBaixaMin: num(e.RESUMO_BAIXA_MIN, 60),

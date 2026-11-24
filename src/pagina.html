@@ -515,6 +515,9 @@ function iniciarComandos(){
     const curta = s.split(/\s+/).filter(Boolean).length <= 4;
     if(CANCELAR.test(s)) { c='cancela'; pararTudo(); } // "cancelar" em QUALQUER frase: para tudo na hora
     else if(/^\W*(pode\s+)?(abra|abre|abrir|abri)\s+(o\s+|os\s+)?(ultimo\s+)?links?\b/.test(s)) c='abrir-link'; // "abra o link (da Ana)"
+    // "silencia a Ana (por 2 horas)" / "volta a avisar a Ana"
+    else if(/^\W*(pode\s+)?(volta|voltar|volte)\s+a\s+(avisar|falar)\s+\S|^\W*(tira|tirar|tire)\s+o\s+silencio\s+\S|^\W*(dessilencia|dessilenciar|desmuta|desmutar)\s+\S/.test(s)) c='dessilenciar';
+    else if(/^\W*(pode\s+)?(silencia|silencie|silenciar|pausa|pause|pausar|muta|mute|mutar)\s+\S/.test(s)) c='silenciar';
     // respostas rápidas: hora, tempo, e-mails de hoje, repete
     else if(/^\W*((me\s+)?(diz|fala|fale)\s+)?(que|qual)\s+(horas?|hora que)\b|^\W*(me\s+)?(diz|fala|fale)\s+(a|as)\s+horas?\b/.test(s)) c='hora';
     else if(/^\W*(sera que\s+)?(vai|vai ter|tem previsao de)\s+chover\b|^\W*(como\s+)?(esta|ta|vai|vai estar|vai ficar)\s+o\s+(tempo|clima)\b|^\W*(qual\s+)?(a|e a)?\s*previsao\b|^\W*previsao do tempo\b|^\W*(quantos graus|qual a temperatura|ta (frio|calor))\b/.test(s)) c='clima';

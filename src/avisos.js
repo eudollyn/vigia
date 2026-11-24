@@ -207,6 +207,8 @@ export async function avisar(item) {
   }
   if (item.atrasada) return guardarAtrasada(item, icone, origem);
   const urgente = item.prioridade === 'urgente';
+  // mensagens picadas da mesma pessoa / pessoa silenciada: só na tela, sem notificação nem voz
+  if (item.canal === 'whatsapp' && item.jid && !urgente && seguraAviso(item)) return;
   const titulo = `${urgente ? '🔴 URGENTE · ' : ''}${icone} ${origem}`;
   const texto = item.assunto ? `${item.assunto}\n${item.resumo}` : item.resumo;
   await notificar(titulo, texto, urgente);
@@ -243,6 +245,104 @@ export async function avisar(item) {
   const conteudo = item.privado ? '' : ` ${item.fala || item.resumo}`;
   falar(`${urgente && !item.privado ? 'Urgente. ' : ''}${canalFala} ${nomeFalado}${grupoFalado}.${conteudo}`, depois);
 }
+
+// ---------- mensagens picadas: pausa por pessoa e "silencia o Ana" ----------
+// Depois de falar "Mensagem de Ana", as próximas do Ana ficam só na tela por PAUSA_MESMA_PESSOA_MIN (5 min).
+// No fim da pausa, se chegou mais coisa: "Ana mandou mais 6 mensagens." O "leia" lê tudo o que juntou.
+const falouDe = new Map();    // jid → quando foi o último aviso FALADO dessa conversa
+const seguradas = new Map();  // jid → { itens: [...], timer }
+const ARQ_SIL = path.join(DADOS, 'silenciados.json');
+let silenciados = [];         // { ids: [...], nome, ate, qtd }
+try { silenciados = JSON.parse(fs.readFileSync(ARQ_SIL, 'utf8')).filter((s) => s.ate > Date.now()); } catch {}
+const salvarSil = () => { try { fs.writeFileSync(ARQ_SIL, JSON.stringify(silenciados)); } catch {} };
+
+// junta várias mensagens num item só (o "leia" lê todas, o "abra o link" pega o último link)
+function juntar(itens) {
+  const u = itens[itens.length - 1];
+  if (itens.length === 1) return u;
+  const qtd = itens.reduce((s, i) => s + (i.quantidade || 1), 0);
+  return { ...u, quantidade: qtd, texto: itens.map((i) => i.texto).join('\n'),
+    resumo: itens.map((i) => i.resumo).filter(Boolean).join(' '), fala: itens.map((i) => i.fala || i.resumo).filter(Boolean).join(' ') };
+}
+function mostrarNaTela(item) {
+  if (config.saidaVoz === 'pc') return;
+  import('./alto-falante.js').then((af) => af.mostrarAviso({
+    canal: item.canal, de: item.de, grupo: item.grupo, urgente: false, resumo: ehPrivado(item) ? '' : item.resumo,
+    hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+  })).catch(() => {});
+}
+/** true = não avisa agora (fica só na tela). Também marca quando falou dessa pessoa. */
+function seguraAviso(item) {
+  const nome = semEmoji(item.de);
+  const itemFalado = { ...item, de: nome, grupo: item.grupo && semEmoji(item.grupo), privado: ehPrivado(item) };
+  // 1) silenciada por voz ("silencia o Ana")
+  const s = silenciados.find((x) => x.ate > Date.now() && x.ids.includes(item.jid));
+  if (s) {
+    s.qtd += item.quantidade || 1; salvarSil();
+    mostrarNaTela(item);
+    ultimoWhats = ultimoQualquer = { quando: Date.now(), item: itemFalado };
+    log(`aviso: ${nome} está silenciado (só na tela)`);
+    return true;
+  }
+  // 2) pausa depois de um aviso falado da mesma conversa
+  const ult = falouDe.get(item.jid);
+  if (ult && Date.now() - ult < config.pausaPessoaMs) {
+    let g = seguradas.get(item.jid);
+    if (!g) {
+      g = { itens: [] }; seguradas.set(item.jid, g);
+      g.timer = setTimeout(() => soltarSeguradas(item.jid), ult + config.pausaPessoaMs - Date.now());
+    }
+    g.itens.push(itemFalado);
+    mostrarNaTela(item);
+    ultimoWhats = ultimoQualquer = { quando: Date.now(), item: juntar(g.itens) };
+    log(`aviso: ${nome} mandou de novo dentro da pausa (só na tela, ${g.itens.length} juntas)`);
+    return true;
+  }
+  falouDe.set(item.jid, Date.now());
+  return false;
+}
+// fim da pausa: um aviso só com o total
+function soltarSeguradas(jid) {
+  const g = seguradas.get(jid); seguradas.delete(jid);
+  if (!g?.itens.length) return;
+  const item = juntar(g.itens);
+  const n = item.quantidade || g.itens.length;
+  falouDe.set(jid, Date.now()); // a próxima pausa começa agora
+  ultimoWhats = ultimoQualquer = { quando: Date.now(), item };
+  const grupo = item.grupo ? `, no grupo ${item.grupo}` : '';
+  const frase = `${item.de} mandou mais ${n === 1 ? 'uma mensagem' : `${n} mensagens`}${grupo}.`;
+  log(`aviso: ${frase}`);
+  notificar(`💬 ${item.grupo ? `${item.de} em ${item.grupo}` : item.de}`, `+${n} mensagens`);
+  const depois = config.lerSobDemanda && config.responderVoz
+    ? () => import('./conversa.js').then((m) => m.aposAviso(item, { dizer, enviar: enviarWhatsApp }))
+    : undefined;
+  falar(frase, depois);
+}
+
+/** "Silencia o Ana por uma hora": ids = todas as formas do contato (telefone e @lid). */
+export function silenciar(ids, nome, minutos) {
+  silenciados = silenciados.filter((s) => !s.ids.some((i) => ids.includes(i)));
+  silenciados.push({ ids, nome: semEmoji(nome), ate: Date.now() + minutos * 60_000, qtd: 0 });
+  salvarSil();
+}
+/** "Volta a avisar o Ana" → quantas mensagens chegaram enquanto estava silenciado (ou null se não estava). */
+export function dessilenciar(ids) {
+  const s = silenciados.find((x) => x.ids.some((i) => ids.includes(i)));
+  if (!s) return null;
+  silenciados = silenciados.filter((x) => x !== s); salvarSil();
+  return s.qtd;
+}
+// o silêncio acabou sozinho: conta o que chegou
+setInterval(() => {
+  const agora = Date.now();
+  const fim = silenciados.filter((s) => s.ate <= agora);
+  if (!fim.length) return;
+  silenciados = silenciados.filter((s) => s.ate > agora); salvarSil();
+  for (const s of fim) {
+    log(`aviso: acabou o silêncio de ${s.nome} (${s.qtd} mensagens)`);
+    falar(s.qtd ? `Acabou o silêncio de ${s.nome}. Nesse tempo, chegaram ${s.qtd === 1 ? 'uma mensagem' : `${s.qtd} mensagens`}.` : `Acabou o silêncio de ${s.nome}. Não chegou nada nesse tempo.`);
+  }
+}, 30_000).unref?.();
 
 // Mensagens que chegaram enquanto o Vigia estava fora (PC desligado, reinício): em vez de falar uma por uma,
 // junta tudo e fala UM aviso só ("Enquanto eu estava desligado, chegaram mensagens de Ana e do grupo X.").

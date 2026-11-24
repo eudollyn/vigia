@@ -366,6 +366,53 @@ async function abrirUltimoLink(t) {
   return naFila(() => dizer(ok ? `Abrindo o link de ${achado.de}.` : 'Não consegui abrir esse link.'));
 }
 
+// "Silencia o Ana (por duas horas / o dia todo)" e "volta a avisar o Ana"
+const NUMEROS = { uma: 1, um: 1, duas: 2, dois: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, oito: 8, dez: 10, quinze: 15, vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50 };
+export function entenderSilencio(t) {
+  let s = tirarAcento(t).replace(/[.,!?;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  let minutos = 60;
+  const fimDoDia = () => { const d = new Date(); d.setHours(23, 59, 0, 0); return Math.max(1, Math.round((d - Date.now()) / 60000)); };
+  let m;
+  if ((m = /\b(?:por\s+)?(?:o\s+)?(dia (todo|inteiro)|hoje|ate (o fim do dia|amanha|de noite))\b.*$/.exec(s))) { minutos = fimDoDia(); s = s.slice(0, m.index); }
+  else if ((m = /\b(?:por\s+)?meia hora\b.*$/.exec(s))) { minutos = 30; s = s.slice(0, m.index); }
+  else if ((m = /\b(?:por\s+)?(\d+|uma|um|duas|dois|tres|quatro|cinco|seis|oito|dez)\s+horas?\b.*$/.exec(s))) { minutos = 60 * (Number(m[1]) || NUMEROS[m[1]]); s = s.slice(0, m.index); }
+  else if ((m = /\b(?:por\s+)?(\d+|dez|quinze|vinte|trinta|quarenta|cinquenta)\s+min\w*\b.*$/.exec(s))) { minutos = Number(m[1]) || NUMEROS[m[1]]; s = s.slice(0, m.index); }
+  const nome = s
+    .replace(/^\W*(pode\s+)?(silencia|silencie|silenciar|pausa|pause|pausar|muta|mute|mutar|cala|desliga)\s+/, '')
+    .replace(/^\W*(pode\s+)?(volta|voltar|volte)\s+a\s+(avisar|falar)\s+/, '').replace(/^\W*(pode\s+)?(avisar|avisa)\s+(de novo\s+)?/, '')
+    .replace(/^\W*(tira|tirar|tire)\s+o\s+silencio\s+/, '').replace(/^\W*(dessilencia|dessilenciar|desmuta|desmutar)\s+/, '')
+    .replace(/^(os\s+avisos|as\s+mensagens|o\s+aviso)\s+/, '').replace(/^(d[oa]s?|de)\s+/, '').replace(/^(o|a)\s+/, '')
+    .replace(/\s+(de novo|por enquanto|um pouco|ai)$/, '').trim();
+  return { nome: nomeDoComando(nome), minutos: Math.min(minutos, 24 * 60) };
+}
+function duracaoFalada(min) {
+  if (min >= 12 * 60) return 'até o fim do dia';
+  if (min % 60 === 0) return `por ${min === 60 ? 'uma hora' : `${min / 60} horas`}`;
+  return min === 30 ? 'por meia hora' : `por ${min} minutos`;
+}
+async function silenciarPessoa(t) {
+  const { nome, minutos } = entenderSilencio(t);
+  if (!nome) return naFila(() => dizer('Quem você quer silenciar? Fala, por exemplo: silencia o Ana.'));
+  const c = await acharConversa(nome);
+  if (!c) return naFila(() => dizer(`Não achei ${nome} nos seus contatos.`));
+  const { silenciar } = await import('./avisos.js');
+  silenciar(c.ids, c.de, minutos);
+  const quem = limparNome(c.de);
+  log(`voz: silenciando ${quem} ${duracaoFalada(minutos)}`);
+  return naFila(() => dizer(`Combinado. ${c.grupo ? 'O grupo ' : ''}${quem} fica em silêncio ${duracaoFalada(minutos)}. As mensagens aparecem só na tela.`));
+}
+async function voltarAvisar(t) {
+  const { nome } = entenderSilencio(t);
+  const c = await acharConversa(nome);
+  if (!c) return naFila(() => dizer(nome ? `Não achei ${nome} nos seus contatos.` : 'Quem você quer voltar a ouvir?'));
+  const { dessilenciar } = await import('./avisos.js');
+  const qtd = dessilenciar(c.ids);
+  const quem = limparNome(c.de);
+  if (qtd === null) return naFila(() => dizer(`${quem} não estava em silêncio.`));
+  log(`voz: voltando a avisar ${quem} (${qtd} mensagens no silêncio)`);
+  return naFila(() => dizer(`Pronto, volto a avisar ${quem}.${qtd ? ` Nesse tempo, chegaram ${qtd === 1 ? 'uma mensagem' : `${qtd} mensagens`}. Diga leia a última mensagem de ${quem} para ouvir.` : ''}`));
+}
+
 // "Repete": fala de novo a última coisa que o Vigia disse
 async function repetir() {
   const { ultimaFala } = await import('./avisos.js');
@@ -415,6 +462,8 @@ export function iniciarComandos(af) {
     if (c === 'emails') return lerEmailsHoje();
     if (c === 'repete') return repetir();
     if (c === 'abrir-link') return abrirUltimoLink(t);
+    if (c === 'silenciar') return silenciarPessoa(t);
+    if (c === 'dessilenciar') return voltarAvisar(t);
     if (c === 'ouca-de') return ouvirAudioDe(t);
     if (c === 'responda-de' && config.responderVoz) return umaConversa('responda-de', () => responderPara(t));
     if (c === 'ouca-audio') {
