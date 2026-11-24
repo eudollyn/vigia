@@ -43,7 +43,8 @@ Regras:
 - baixa: SOMENTE propaganda, anúncio, newsletter, marketing, promoção, convite para webinar/evento comercial, correntes. Conversa de uma pessoa (mesmo "ok", "kkk", "achei legal") é normal.
 - NÃO são baixa, mesmo vindo de endereço automático: boleto, nota fiscal, pedido, cotação, orçamento, cobrança, pagamento, entrega, senha/código, alerta de segurança, aviso de sistema que pede ação.
 - normal: todo o resto.
-- "fala" não repete o nome do remetente (ele já é dito antes) e não usa emojis, links ou números longos.`;
+- "fala" não repete o nome do remetente (ele já é dito antes) e não usa emojis, links ou números longos.
+- Nunca reescreva gírias, expressões ou frases feitas: escreva do jeito que a pessoa escreveu. Trechos curtos vão entre aspas, do jeito que a pessoa falou.`;
 
 let ativos = 0;
 const espera = [];

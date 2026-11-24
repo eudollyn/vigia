@@ -6,6 +6,18 @@ const DESCRICAO = (c) =>
   c <= 57 ? 'garoa' : c <= 67 ? 'chuva' : c <= 77 ? 'neve' : c <= 82 ? 'pancadas de chuva' : 'tempestade';
 
 /** → frase pronta, ou '' se não conseguir. */
+/** Temperatura de agora, em graus (ou null). */
+export async function temperaturaAgora() {
+  try {
+    const u = new URL('https://api.open-meteo.com/v1/forecast');
+    u.search = new URLSearchParams({ latitude: String(config.climaLat), longitude: String(config.climaLon), timezone: 'America/Sao_Paulo', current: 'temperature_2m' });
+    const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const t = (await r.json()).current?.temperature_2m;
+    return t == null ? null : Math.round(t);
+  } catch { return null; }
+}
+
 export async function previsaoHoje() {
   try {
     const u = new URL('https://api.open-meteo.com/v1/forecast');

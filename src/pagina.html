@@ -14,7 +14,9 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:"Inter Tight",system-ui,sans-serif;overflow:hidden}
 canvas#ceu{position:fixed;inset:0;width:100%;height:100%;display:block}
-.cena{position:relative;z-index:2;height:100%;display:grid;grid-template-rows:auto 1fr auto;padding:22px 28px}
+.cena{position:relative;z-index:2;height:100%;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:minmax(0,1fr);padding:22px 28px}
+/* nada pode alargar a página: textos longos são cortados com "…" */
+.topo,.centro,.base,.pilha,.lista,.aviso{min-width:0;max-width:100%}
 /* topo */
 .topo{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .marca{font-weight:800;letter-spacing:.02em;font-size:18px;display:flex;align-items:center;gap:10px}
@@ -39,9 +41,9 @@ canvas#ceu{position:fixed;inset:0;width:100%;height:100%;display:block}
 /* avisos */
 .base{display:flex;justify-content:center}
 .lista{width:min(720px,100%);display:flex;flex-direction:column;gap:8px}
-.aviso{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px 16px;border-radius:14px;
+.aviso{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 16px;border-radius:14px;
   background:var(--vidro);border:1px solid var(--borda);backdrop-filter:blur(10px);animation:entra .7s cubic-bezier(.2,.8,.2,1) both}
-.aviso .ic{font-size:18px} .aviso .q{font-weight:600} .aviso .r{color:var(--sub);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aviso > div{min-width:0} .aviso .ic{font-size:18px} .aviso .q{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .aviso .r{color:var(--sub);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .aviso .h{color:var(--sub);font-size:12px} .aviso.urg{border-color:rgba(255,138,122,.5)}
 @keyframes entra{from{opacity:0;transform:translateY(14px) scale(.98)}}
 /* interações: só o que é clicável recebe o mouse; o resto deixa passar para o céu */
@@ -157,7 +159,7 @@ function explodir(x, y, n=46, cores=['#ffd9a0','#ffb35c','#fff']){
 addEventListener('click', e => {
   if (e.target.closest('button,.aviso,.chip,.dock,.abrir')) return;
   const x=e.clientX*DPR, y=e.clientY*DPR;
-  if (orbe.sobre){ explodir(x, y, 70, ['#ff6ec8','#5aaaff','#50f0dc','#fff']); comando('responda','responda'); }
+  if (orbe.sobre){ explodir(x, y, 70, ['#ff6ec8','#5aaaff','#50f0dc','#fff']); pedirResposta(); }
   else explodir(x, y);
 });
 function tamanho(){
@@ -287,9 +289,18 @@ addEventListener('pointermove', e => {
     b.style.transform = d < 90 ? `translate(${cl(dx*.12)}px,${cl(dy*.15)}px)` : '';
   }
 });
+// Responder (esfera ou botão): um pedido por vez, com 15 s de espera entre cliques e retorno imediato
+let ultimoPedidoResp = 0;
+function pedirResposta(){
+  if (Date.now() - ultimoPedidoResp < 15000){ estado('Já pedi, espere ela perguntar… (para desistir, diga "não")','cmd'); return; }
+  ultimoPedidoResp = Date.now();
+  estado('Ok! Ela já vai perguntar o que responder. Para desistir, diga "não".','cmd');
+  setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },6000);
+  comando('responda','responda');
+}
 $('bResp').addEventListener('click', e => {
   const r=e.currentTarget.getBoundingClientRect(); explodir((r.left+r.width/2)*DPR,(r.top)*DPR,30,['#7cc4ff','#fff']);
-  estado('Respondendo a última mensagem…','cmd'); comando('responda','responda');
+  pedirResposta();
 });
 (() => { // segurar 1,4 s para confirmar o desligamento (soltar antes cancela)
   const b=$('bTchau'); let t0=0, raf=0;
@@ -308,7 +319,7 @@ $('bResp').addEventListener('click', e => {
   h.addEventListener('mouseleave', () => { clearInterval(it); relogio(); });
 })();
 // selos explicam o que significam
-$('cConex').title='Ligação com o PC (Vigia)'; $('cMic').title='Microfone deste notebook para o "responda"'; $('cCmd').title='Comandos de voz: "envia mensagem para …", "me lembra às … de …", "responda", "até amanhã", "cancela"';
+$('cConex').title='Ligação com o PC (Vigia)'; $('cMic').title='Microfone deste notebook para o "responda"'; $('cCmd').title='Comandos de voz: "mande um áudio para …", "leia (a última mensagem)", "ouça o áudio", "responda (a última mensagem)", "envia mensagem para …", "me lembra às … de …", "até amanhã", "cancela"';
 
 /* ---------------- áudio (falas do Vigia) ---------------- */
 let actx = null;
@@ -322,7 +333,13 @@ function plim(){ return new Promise(ok => { try { const ac=contexto(), t=ac.curr
     g.gain.setValueAtTime(0,t+d); g.gain.linearRampToValueAtTime(.35,t+d+.02); g.gain.exponentialRampToValueAtTime(.001,t+d+.35);
     o.connect(g); g.connect(ac.destination); o.start(t+d); o.stop(t+d+.4); });
   setTimeout(ok, 480); } catch(e) { ok(); } }); }
-function tocar(id){ fila = fila.then(() => new Promise(async r => {
+// "Cancelar": para o que estiver tocando/ouvindo/gravando e descarta o que estava na fila
+let gerPagina = 0, pararAtual = null;
+function pararTudo(){ gerPagina++; const f = pararAtual; pararAtual = null; try { f && f(); } catch(e) {} }
+const CANCELAR = /\bcancel(a|ar|e|ou|em)\b/;
+const semAcentoP = (t) => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+function tocar(id){ const g = gerPagina; fila = fila.then(() => new Promise(async r => {
+  if (g !== gerPagina) { fetch('/tocado/'+id+'?k='+k,{method:'POST'}).catch(()=>{}); return r(); }
   pausar(); estado('Falando…','falando');
   if (musica) await plim();
   const a = new Audio('/audio/'+id+'?k='+k); a.crossOrigin='anonymous';
@@ -335,7 +352,10 @@ function tocar(id){ fila = fila.then(() => new Promise(async r => {
     medir = setInterval(()=>{ an.getByteTimeDomainData(buf); let s=0; for(const v of buf){const x=(v-128)/128; s+=x*x;} anima.alvo = Math.min(1, Math.sqrt(s/buf.length)*5); }, 50);
   } catch(e) {}
   const fim = () => { clearInterval(medir); anima.alvo = 0; estado('Esperando mensagens…'); fetch('/tocado/'+id+'?k='+k,{method:'POST'}).catch(()=>{}); retomar(); r(); };
-  a.onended = fim; a.onerror = fim; a.play().catch(fim);
+  let feito = false; const fim1 = () => { if (feito) return; feito = true; if (pararAtual === parar) pararAtual = null; fim(); };
+  const parar = () => { try { a.pause(); } catch(e) {} fim1(); };
+  pararAtual = parar;
+  a.onended = fim1; a.onerror = fim1; a.play().catch(fim1);
 })); }
 
 /* ---------------- gravação (quando o Vigia pede para ouvir) ---------------- */
@@ -346,7 +366,97 @@ function wav16(quadros, rate){ let total=0; for(const q of quadros) total+=q.len
   v.setUint32(24,16000,true);v.setUint32(28,32000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
   for(let i=0;i<n;i++){const x=Math.max(-1,Math.min(1,src[Math.floor(i*r)]));v.setInt16(44+i*2,x*32767,true);} return new Blob([buf],{type:'audio/wav'}); }
 function enviarFala(id, blob){ fetch('/fala/'+id+'?k='+k,{method:'POST',body:blob||new Blob([])}).catch(()=>{}); }
-function ouvir(p){ fila = fila.then(async()=>{ pausar(); try { await ouvirAgora(p); } finally { retomar(); } }); }
+function ouvir(p){ const g = gerPagina; fila = fila.then(async()=>{ if (g !== gerPagina) return enviarTexto(p.id, ''); pausar(); try { await (p.gravar ? gravarRecado(p) : SR && micOk ? ouvirComChrome(p) : ouvirAgora(p)); } finally { retomar(); } }); }
+
+// "Mande um áudio para…": GRAVA a sua voz (MediaRecorder, Opus). O reconhecimento do Chrome roda junto só para
+// saber quando você terminou de falar (2 s sem palavras novas) e mostrar o texto na tela.
+async function gravarRecado(p){
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
+  catch(e){ chip('cMic','mal','Microfone bloqueado'); return enviarFala(p.id,null); }
+  try { const ac=contexto(); await ac.resume(); const t=ac.currentTime, os=ac.createOscillator(), g=ac.createGain();
+    os.frequency.value=880; g.gain.setValueAtTime(.25,t); g.gain.linearRampToValueAtTime(0,t+.15); os.connect(g); g.connect(ac.destination); os.start(t); os.stop(t+.16); } catch(e) {}
+  await new Promise(r=>setTimeout(r,250));
+  const tipo = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+  const gravador = new MediaRecorder(stream, { mimeType: tipo }); const pedacos = [];
+  gravador.ondataavailable = e => { if (e.data.size) pedacos.push(e.data); };
+  gravador.start(250);
+  estado('🔴 Gravando o áudio… fale e depois fique em silêncio','ouvindo'); chip('cMic','ouvindo','Gravando');
+  const finais = []; let parcial = '', comecou = false, ultimaFala = 0, acabou = false;
+  const r = SR ? new SR() : null;
+  await new Promise(res => {
+    const inicio = Date.now();
+    const fim = (enviar) => { if (acabou) return; acabou = true; clearInterval(relogio); try{ r && r.abort(); }catch(e){}
+      gravador.onstop = async () => {
+        stream.getTracks().forEach(x=>x.stop()); anima.alvo = 0; chip('cMic','ok','Microfone');
+        const texto = (finais.join(' ') + ' ' + parcial).replace(/\s+/g,' ').trim();
+        estado(enviar ? 'Áudio gravado. Ouça para conferir…' : 'Esperando mensagens…', enviar ? 'cmd' : '');
+        if (!enviar) { enviarFala(p.id, null); return res(); }
+        const blob = new Blob(pedacos, { type: tipo });
+        fetch('/fala/'+p.id+'?k='+k, { method:'POST', headers:{ 'Content-Type':'audio/webm', 'X-Texto': encodeURIComponent(texto) }, body: blob }).catch(()=>{});
+        res();
+      };
+      try { gravador.stop(); } catch(e) { gravador.onstop(); } };
+    pararAtual = () => fim(false);
+    const relogio = setInterval(() => {
+      const agora = Date.now();
+      if (!comecou && agora - inicio > p.esperaMs + 500) return fim(false);                 // não falou nada
+      if (comecou && agora - ultimaFala > Math.max(1000, p.silencioMs)) return fim(true);    // terminou de falar (o silêncio que sobrar é cortado no PC)
+      if (agora - inicio > p.esperaMs + p.maxMs) return fim(true);                           // tempo máximo
+    }, 150);
+    if (!r) { comecou = true; ultimaFala = Date.now() + p.maxMs; return; } // sem reconhecimento: grava até o tempo máximo
+    r.lang='pt-BR'; r.continuous=true; r.interimResults=true;
+    const tentar = () => { if (acabou) return; try { r.start(); } catch(e) { setTimeout(tentar, 250); } };
+    r.onresult = e => { comecou = true; ultimaFala = Date.now(); parcial = ''; anima.alvo = .6;
+      for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript.trim(); if (e.results[i].isFinal) finais.push(t); else parcial += ' ' + t; }
+      estado('🔴 “'+(finais.join(' ')+' '+parcial).trim()+'”','ouvindo');
+      // falou "cancelar" no meio da gravação: para já e avisa o PC (que não envia nada)
+      if (CANCELAR.test(semAcentoP(finais.join(' ')+' '+parcial))) { acabou = true; clearInterval(relogio); try{ r.abort(); }catch(e){}
+        gravador.onstop = () => { stream.getTracks().forEach(x=>x.stop()); anima.alvo = 0; chip('cMic','ok','Microfone'); estado('Cancelado','cmd'); };
+        try { gravador.stop(); } catch(e) {} enviarTexto(p.id, 'cancelar'); res(); } };
+    r.onend = () => { if (!acabou) setTimeout(tentar, 200); };
+    aguardarComandosPararem().then(tentar);
+  });
+}
+
+// Ouvir com o reconhecimento de voz do próprio Chrome: grátis, sem cota (o Gemini só entra se não houver Chrome).
+// Devolve o TEXTO pronto ao PC. Termina após `silencioMs` sem fala nova, ou em `maxMs`.
+function enviarTexto(id, texto){ fetch('/fala/'+id+'?k='+k,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:texto||''}).catch(()=>{}); }
+async function ouvirComChrome(p){
+  try { const ac=contexto(); await ac.resume(); const t=ac.currentTime, os=ac.createOscillator(), g=ac.createGain();
+    os.frequency.value=880; g.gain.setValueAtTime(.25,t); g.gain.linearRampToValueAtTime(0,t+.15); os.connect(g); g.connect(ac.destination); os.start(t); os.stop(t+.16); } catch(e) {}
+  await new Promise(r=>setTimeout(r,250)); // deixa o bipe terminar antes de abrir o reconhecimento
+  estado('Ouvindo você…','ouvindo'); chip('cMic','ouvindo','Ouvindo');
+  const finais = []; let parcial = '', comecou = false, ultimaFala = 0, acabou = false;
+  const r = new SR(); r.lang='pt-BR'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
+  await new Promise(res => {
+    const fim = () => { if (acabou) return; acabou = true; clearInterval(relogio); try{ r.abort(); }catch(e){}
+      const texto = (finais.join(' ') + ' ' + parcial).replace(/\s+/g,' ').trim();
+      anima.alvo = 0; estado(texto ? '“'+texto+'”' : 'Esperando mensagens…', texto ? 'cmd' : ''); chip('cMic','ok','Microfone');
+      setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },4000);
+      enviarTexto(p.id, texto); res(); };
+    const inicio = Date.now();
+    const relogio = setInterval(() => {
+      const agora = Date.now();
+      if (!comecou && agora - inicio > p.esperaMs + 500) return fim();               // ninguém falou
+      if (comecou && agora - ultimaFala > Math.max(1200, p.silencioMs)) return fim(); // parou de falar
+      if (agora - inicio > p.esperaMs + p.maxMs) return fim();                       // tempo máximo
+    }, 150);
+    r.onresult = e => { comecou = true; ultimaFala = Date.now(); parcial = ''; anima.alvo = .6;
+      for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript.trim(); if (e.results[i].isFinal) finais.push(t); else parcial += ' ' + t; }
+      estado('“'+(finais.join(' ')+' '+parcial).trim()+'”','ouvindo');
+      if (CANCELAR.test(semAcentoP(finais.join(' ')+' '+parcial))) fim(); };
+    pararAtual = () => { finais.length = 0; parcial = ''; fim(); };
+    // (sem onspeechstart: qualquer ruído ou o fim da própria voz disparava "começou a falar" e a janela fechava em 2 s;
+    //  agora só conta como fala quando o Chrome reconhece PALAVRAS, em onresult)
+    // O Chrome só permite UM reconhecimento por vez: se recusar (a escuta de comandos ainda está desligando),
+    // tenta de novo a cada 250 ms até o fim da janela — nunca fecha a janela por causa disso.
+    const tentar = () => { if (acabou) return; try { r.start(); } catch(e) { setTimeout(tentar, 250); } };
+    r.onend = () => { if (!acabou) setTimeout(tentar, 200); }; // o Chrome às vezes encerra sozinho: retoma
+    r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { chip('cMic','mal','Microfone bloqueado'); fim(); } };
+    aguardarComandosPararem().then(tentar);
+  });
+}
 async function ouvirAgora(p){
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
@@ -380,6 +490,9 @@ async function ouvirAgora(p){
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec=null, pausa=0, recAtivo=false;
 function pausar(){ pausa++; try{ rec && rec.abort(); }catch(e){} }
+// espera a escuta de comandos terminar de verdade (no máximo 1 s) antes de abrir outro reconhecimento
+let avisarFimRec = [];
+function aguardarComandosPararem(){ return recAtivo ? new Promise(ok => { avisarFimRec.push(ok); setTimeout(ok, 1000); }) : Promise.resolve(); }
 function retomar(){ pausa=Math.max(0,pausa-1); if(!pausa) setTimeout(ligarRec,300); }
 function ligarRec(){ if(!rec||pausa||recAtivo||musica) return; try{ rec.start(); recAtivo=true; }catch(e){} }
 function aplicarMusica(){
@@ -394,15 +507,31 @@ function setMusica(v){ musica=v; try{ localStorage.setItem('vigia-musica', v?'1'
 function iniciarComandos(){
   if(!SR || !micOk){ chip('cCmd','mal','Comandos indisponíveis'); return; }
   rec=new SR(); rec.lang='pt-BR'; rec.continuous=true; rec.interimResults=false;
-  rec.onend=()=>{ recAtivo=false; if(!pausa) setTimeout(ligarRec,400); };
+  rec.onend=()=>{ recAtivo=false; avisarFimRec.splice(0).forEach(f=>f()); if(!pausa) setTimeout(ligarRec,400); };
   rec.onerror=e=>{ recAtivo=false; if(e.error==='not-allowed'||e.error==='service-not-allowed'){ chip('cCmd','mal','Comandos bloqueados'); rec=null; } };
   rec.onresult=e=>{ for(let i=e.resultIndex;i<e.results.length;i++){ if(!e.results[i].isFinal) continue;
     const t=e.results[i][0].transcript.trim(); const s=t.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); let c=null;
     // "até amanhã" e "cancela" só valem como frase curta (até 4 palavras), nunca no meio de uma conversa
     const curta = s.split(/\s+/).filter(Boolean).length <= 4;
-    if(/^\W*(envia|envie|enviar|manda|mande|mandar)\b.*\bmensage/.test(s)) c='enviar';
+    if(CANCELAR.test(s)) { c='cancela'; pararTudo(); } // "cancelar" em QUALQUER frase: para tudo na hora
+    else if(/^\W*(pode\s+)?(abra|abre|abrir|abri)\s+(o\s+|os\s+)?(ultimo\s+)?links?\b/.test(s)) c='abrir-link'; // "abra o link (da Ana)"
+    // respostas rápidas: hora, tempo, e-mails de hoje, repete
+    else if(/^\W*((me\s+)?(diz|fala|fale)\s+)?(que|qual)\s+(horas?|hora que)\b|^\W*(me\s+)?(diz|fala|fale)\s+(a|as)\s+horas?\b/.test(s)) c='hora';
+    else if(/^\W*(sera que\s+)?(vai|vai ter|tem previsao de)\s+chover\b|^\W*(como\s+)?(esta|ta|vai|vai estar|vai ficar)\s+o\s+(tempo|clima)\b|^\W*(qual\s+)?(a|e a)?\s*previsao\b|^\W*previsao do tempo\b|^\W*(quantos graus|qual a temperatura|ta (frio|calor))\b/.test(s)) c='clima';
+    else if(/^\W*(pode\s+)?(le|leia|ler|lista|liste|quais|que)\s+(os\s+|sao os\s+)?(meus\s+)?(e-?\s?mails?)\b|^\W*(chegou|chegaram)\s+(algum\s+)?e-?\s?mails?\b/.test(s)) c='emails';
+    else if(/^\W*(repete|repita|repetir|fala de novo|diz de novo|fala outra vez|o que voce (disse|falou)|como e que e)(\s+(por favor|ai|vigia))?\W*$/.test(s)) c='repete';
+    else if(/^\W*(envia|envie|enviar|manda|mande|mandar|grava|grave|gravar)\b.{0,12}\baudio\b/.test(s)) c='enviar-audio';
+    else if(/^\W*(envia|envie|enviar|manda|mande|mandar)\b.*\bmensage/.test(s)) c='enviar';
     else if(/^\W*(me\s+)?(lembra|lembre|lembrar|cria um lembrete|criar lembrete|lembrete)\b/.test(s)) c='lembrete';
-    else if(curta && /\bate amanha\b/.test(s)) c='ate-amanha'; else if(curta && /\bcancel/.test(s)) c='cancela'; else if(curta && /\brespond/.test(s)) c='responda';
+    // "até amanhã" só como a FRASE INTEIRA (com no máximo "tchau/valeu/boa noite" antes e "Vigia" depois):
+    // "vamos conversar até amanhã" desligou o PC por engano
+    else if(/^\W*((tchau|valeu|boa noite|ok)\W+)?ate amanha(\W+(vigia|jarvis))?\W*$/.test(s)) c='ate-amanha';else if(curta && /\brespond/.test(s) && !/^\W*(responda|responde|responder)\s+\S/.test(s)) c='responda';
+    // com o NOME: "ouça o último áudio da Ana", "leia a última mensagem da Bia", "responda o Bruno (com áudio)"
+    else if(/^\W*(ouca|ouve|ouvir|escuta|escute|escutar|toca|toque|tocar|reproduz\w*)\b.{0,30}\baudios?\b.*\b(d[oa]s?|de)\s+\S/.test(s)) c='ouca-de';
+    else if(/^\W*(pode\s+)?(leia|le|ler)\b.{0,30}\b(d[oa]s?|de)\s+\S/.test(s) || /^\W*(leia|le|ler)\s+o que\b/.test(s)) c='leia-de';
+    else if(/^\W*(responda|responde|responder)\s+\S/.test(s)) c='responda-de';
+    else if(/^\W*(ouca|ouve|ouvir|escuta|escute|escutar|toca|toque|tocar)\b.{0,25}\baudio\b/.test(s)) c='ouca-audio';
+    else if(/^\W*(leia|le|ler|pode ler|le pra mim|leia pra mim)( a)?( ultima)?( mensagem)?\W*$/.test(s)) c='leia';
     if(c){ estado('“'+t+'”','cmd'); setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },4000);
       fetch('/comando?k='+k+'&c='+c+'&t='+encodeURIComponent(t),{method:'POST'}).catch(()=>{}); } } };
   chip('cCmd','ok','Comandos'); aplicarMusica(); ligarRec();
@@ -427,6 +556,7 @@ $('b').onclick = async () => {
   es.onerror = ()=> chip('cConex','mal','Reconectando ao PC…');
   es.addEventListener('tocar', e=>tocar(e.data));
   es.addEventListener('ouvir', e=>ouvir(JSON.parse(e.data)));
+  es.addEventListener('parar', ()=>{ pararTudo(); estado('Cancelado','cmd'); setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },2500); });
   es.addEventListener('aviso', e=>aviso(JSON.parse(e.data)));
   es.addEventListener('config', e=>{ const c=JSON.parse(e.data); if('nome' in c){ NOME=c.nome; relogio(); } });
   iniciarComandos();

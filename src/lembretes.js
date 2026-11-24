@@ -74,11 +74,55 @@ function relativo(fala) {
   return { quando: Date.now() + ms, texto: texto.replace(/[.!?]+$/, '').trim() };
 }
 
+// Horário absoluto entendido no código (sem IA): "às 17 horas", "às 17:00", "às cinco e meia da tarde", "às três",
+// "amanhã às 8", "meio-dia", "amanhã de manhã", "hoje à noite".
+const HORA_PALAVRA = { uma: 1, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12,
+  treze: 13, quatorze: 14, catorze: 14, quinze: 15, dezesseis: 16, dezessete: 17, dezoito: 18, dezenove: 19, vinte: 20,
+  'vinte e uma': 21, 'vinte e duas': 22, 'vinte e tres': 23 };
+const MIN_PALAVRA = { meia: 30, quinze: 15, trinta: 30, 'quarenta e cinco': 45, dez: 10, vinte: 20, cinco: 5, cinquenta: 50, quarenta: 40 };
+function absoluto(fala) {
+  const s = fala.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[-–]/g, ' ');
+  const base = new Date();
+  let dias = /\bdepois de amanha\b/.test(s) ? 2 : /\bamanha\b/.test(s) ? 1 : 0;
+  let h = null, m = 0, pedaco = '';
+  const pal = Object.keys(HORA_PALAVRA).sort((a, b) => b.length - a.length).join('|');
+  const re = new RegExp(`\\b(?:as|a|ao|para as|pras)\\s+(\\d{1,2}|${pal})(?:\\s*(?::|h)\\s*(\\d{2}))?(?:\\s*(?:horas?|hs?)\\b)?(?:\\s+e\\s+(\\d{1,2}|meia|quinze|trinta|quarenta e cinco|vinte|dez|cinco|cinquenta|quarenta)(?:\\s+minutos?)?)?`);
+  const x = re.exec(s);
+  if (x) {
+    h = /^\d+$/.test(x[1]) ? Number(x[1]) : HORA_PALAVRA[x[1]];
+    if (x[2]) m = Number(x[2]); else if (x[3]) m = /^\d+$/.test(x[3]) ? Number(x[3]) : MIN_PALAVRA[x[3]];
+    pedaco = x[0];
+  } else if (/\bmeio dia\b/.test(s)) { h = 12; pedaco = (/\b(?:ao |as |a )?meio dia\b/.exec(s) || [''])[0]; }
+  else if (/\bmeia noite\b/.test(s)) { h = 0; dias = dias || 1; pedaco = (/\b(?:a |as )?meia noite\b/.exec(s) || [''])[0]; }
+  else if (/\b(de|pela|na) manha\b/.test(s)) { h = 8; pedaco = /\b(de|pela|na) manha\b/.exec(s)[0]; }
+  else if (/\b(a|de|pela|na) tarde\b/.test(s)) { h = 14; pedaco = /\b(a|de|pela|na) tarde\b/.exec(s)[0]; }
+  else if (/\b(a|de|pela|na) noite\b/.test(s)) { h = 19; pedaco = /\b(a|de|pela|na) noite\b/.exec(s)[0]; }
+  if (h === null || h > 23 || m > 59) return null;
+  const periodo = /\bda (tarde|noite)\b/.test(s) ? 'pm' : /\bda (manha|madrugada)\b/.test(s) ? 'am' : '';
+  if (periodo === 'pm' && h < 12) h += 12;
+  const d = new Date(base); d.setDate(d.getDate() + dias); d.setHours(h, m, 0, 0);
+  if (!periodo && h >= 1 && h <= 11 && x) {
+    // "às três" sem manhã/tarde: até 7 é sempre da tarde; senão, se já passou hoje, usa o mesmo horário da tarde
+    if (h <= 7) d.setHours(h + 12);
+    else if (dias === 0 && d <= base) d.setHours(h + 12);
+  }
+  if (dias === 0 && d <= base) d.setDate(d.getDate() + 1); // já passou hoje: amanhã no mesmo horário
+  // texto: o que vem depois de "de / que / pra / para" (tirando o comando e o horário)
+  let resto = fala.normalize('NFC');
+  const semAc = (t) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const i = semAc(resto).indexOf(pedaco.trim());
+  if (pedaco && i >= 0) resto = resto.slice(0, i) + ' ' + resto.slice(i + pedaco.trim().length);
+  resto = resto.replace(/^\W*(me\s+)?(lembra|lembre|lembrar|lembrete|cria um lembrete|criar lembrete)\b/i, '')
+    .replace(/\b(amanh[ãa]|hoje|depois de amanh[ãa])\b/gi, '').replace(/\bda (tarde|noite|manh[ãa]|madrugada)\b/gi, '');
+  const t = (/(?:^|\s)(?:de|que|pra|para|do|da)\s+(.+)$/i.exec(resto.trim()) || [])[1] || '';
+  return { quando: d.getTime(), texto: t.replace(/[.!?]+$/, '').trim() };
+}
+
 export async function criarLembrete(fala) {
-  let r = relativo(fala);
-  if (r && !r.texto) { const ia = await interpretar(fala); r.texto = ia?.texto || 'lembrete'; }
-  if (!r) r = await interpretar(fala);
-  if (!r) return { ok: false, motivo: 'sem-ia' };
+  let r = relativo(fala) || absoluto(fala);
+  if (r && !r.texto) r.texto = 'lembrete'; // sem assunto: "Senhor João, lembrete."
+  if (!r) r = await interpretar(fala); // frase muito diferente: tenta a IA
+  if (!r) return { ok: false, motivo: 'sem-hora' }; // nem o código nem a IA acharam um horário
   if (!r.quando) return { ok: false, motivo: 'sem-hora' };
   if (r.quando < Date.now() - 60_000) return { ok: false, motivo: 'passado' };
   const lembrete = { id: Date.now().toString(36), quando: r.quando, texto: r.texto || 'lembrete', feito: false };

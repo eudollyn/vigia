@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { config, DADOS } from './config.js';
-import { log } from './avisos.js';
+import { log, verificarCancelado, cancelarTudo, Cancelado } from './avisos.js';
 
 const ARQ_CHAVE = path.join(DADOS, 'alto-falante-chave.txt');
 let chave;
@@ -37,6 +37,14 @@ export function enderecos() {
   return ips.map((ip) => `http://${ip}:${config.altoFalantePorta}/?k=${chave}`);
 }
 
+/** "Cancelar": manda o notebook parar (fala, escuta, gravação) e solta quem estava esperando. */
+export function pararTudo() {
+  for (const c of clientes) { try { c.res.write('event: parar\ndata: 1\n\n'); } catch {} }
+  for (const fim of [...esperando.values()]) { try { fim(null); } catch {} }
+}
+const PEDIU_CANCELAR = /\bcancel(a|ar|e|ou|em)\b/;
+const semAcentoAF = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
 /** Manda o WAV para o(s) notebook(s) e espera terminar de tocar. Devolve false se ninguém estiver conectado. */
 export function tocarRemoto(arq) {
   if (!clientes.length) return Promise.resolve(false);
@@ -53,15 +61,42 @@ export function tocarRemoto(arq) {
 }
 
 /** Pede ao notebook para ouvir (com bipe e detecção de fala no navegador). → WAV 16 kHz ou null. */
-export function ouvirRemoto({ esperaMs = 7000, silencioMs = 1400, maxMs = 20000 } = {}) {
+export async function ouvirRemoto(opcoes = {}) {
+  verificarCancelado();
+  const r = await ouvirRemoto0(opcoes);
+  verificarCancelado();
+  // disse "cancelar" (no ditado, na confirmação, no meio da gravação…): cancela TUDO, não envia nada
+  const texto = r && typeof r === 'object' && !Buffer.isBuffer(r) ? r.texto : '';
+  if (texto && PEDIU_CANCELAR.test(semAcentoAF(texto))) {
+    log(`voz: ouvi "${texto}" → cancelar`);
+    await cancelarTudo();
+    import('./avisos.js').then((a) => a.naFila(() => a.dizer('Cancelado.'))).catch(() => {});
+    throw new Cancelado();
+  }
+  return r;
+}
+function ouvirRemoto0({ esperaMs = 7000, silencioMs = 1400, maxMs = 20000, gravar = false } = {}) {
   const c = [...clientes].reverse().find((x) => x.mic);
   if (!c) return Promise.resolve(null);
   const id = crypto.randomBytes(6).toString('hex');
   return new Promise((resolve) => {
-    const fim = (wav) => { clearTimeout(t); esperando.delete(id); resolve(wav && wav.length > 1000 ? wav : null); };
+    // a página devolve TEXTO pronto (reconhecimento do Chrome), um WAV (para o Gemini) ou, com gravar, a GRAVAÇÃO (webm/opus)
+    const fim = (r) => {
+      clearTimeout(t); esperando.delete(id);
+      if (r && typeof r === 'object' && r.gravacao) {
+        log(`voz: gravação recebida do notebook (${Math.round(r.gravacao.length / 1024)} KB)`);
+        return resolve(r.gravacao.length > 2000 ? r : null);
+      }
+      if (r && typeof r === 'object' && 'texto' in r) {
+        if (!r.texto) log('voz: o Chrome do notebook não reconheceu fala (página nova)');
+        return resolve(r.texto ? { texto: r.texto } : null);
+      }
+      if (r) log(`voz: recebi áudio gravado do notebook (${r.length} bytes; página ANTIGA? aperte F5 no notebook)`);
+      resolve(r && r.length > 1000 ? r : null);
+    };
     const t = setTimeout(() => fim(null), esperaMs + maxMs + 8000);
     esperando.set(id, fim);
-    c.res.write(`event: ouvir\ndata: ${JSON.stringify({ id, esperaMs, silencioMs, maxMs })}\n\n`);
+    c.res.write(`event: ouvir\ndata: ${JSON.stringify({ id, esperaMs, silencioMs, maxMs, gravar })}\n\n`);
   });
 }
 
@@ -96,17 +131,42 @@ export function iniciarAltoFalante() {
     if (url.pathname === '/comando' && req.method === 'POST') {
       const c = url.searchParams.get('c'), t = (url.searchParams.get('t') || '').slice(0, 300);
       res.writeHead(204).end();
-      if (['ate-amanha', 'cancela', 'responda', 'enviar', 'lembrete'].includes(c)) {
+      if (['ate-amanha', 'cancela', 'responda', 'enviar', 'enviar-audio', 'lembrete', 'leia', 'ouca-audio', 'leia-de', 'ouca-de', 'responda-de', 'hora', 'clima', 'emails', 'repete', 'abrir-link'].includes(c)) {
         log(`comando de voz: ${c} ("${t}")`);
         for (const fn of ouvintesComando) Promise.resolve(fn(c, t)).catch((e) => log(`comando ${c}: ${e.message}`));
       }
+      return;
+    }
+    // o "Ligar o PC" do notebook pergunta se a página do Vigia já está aberta lá
+    if (url.pathname === '/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify({ notebooks: clientes.length }));
+      return;
+    }
+    // instalador do "Ligar o PC" para o notebook, já com os dados deste PC
+    if (url.pathname === '/notebook/ligar-pc.zip') {
+      import('./ligar-pc.js').then(async ({ montarLigarPc }) => {
+        const zip = await montarLigarPc(chave);
+        if (!zip) { res.writeHead(500).end('Não consegui montar o instalador.'); return; }
+        log('alto-falante: instalador do "Ligar o PC" baixado');
+        res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="Vigia-Ligar-o-PC.zip"', 'Cache-Control': 'no-store' });
+        fs.createReadStream(zip).pipe(res);
+      }).catch(() => res.writeHead(500).end());
       return;
     }
     m = /^\/fala\/([a-f0-9]+)$/.exec(url.pathname);
     if (m && req.method === 'POST') {
       const partes = []; let tam = 0;
       req.on('data', (d) => { tam += d.length; if (tam > 5_000_000) req.destroy(); else partes.push(d); });
-      req.on('end', () => { esperando.get(m[1])?.(Buffer.concat(partes)); res.writeHead(204).end(); });
+      req.on('end', () => {
+        const corpo = Buffer.concat(partes);
+        const tipo = String(req.headers['content-type'] || '');
+        let texto = ''; try { texto = decodeURIComponent(String(req.headers['x-texto'] || '')).slice(0, 2000); } catch {}
+        esperando.get(m[1])?.(
+          tipo.startsWith('text/plain') ? { texto: corpo.toString('utf8').trim().slice(0, 2000) }
+          : tipo.startsWith('audio/webm') ? { gravacao: corpo, texto }
+          : corpo);
+        res.writeHead(204).end();
+      });
       return;
     }
     res.writeHead(404).end();

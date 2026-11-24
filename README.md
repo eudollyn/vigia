@@ -43,6 +43,13 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | 📦 | **Respeita as arquivadas** | Conversas arquivadas no WhatsApp ficam em silêncio. Arquivou ou desarquivou no celular, ele atualiza na hora. |
 | 🔤 | **Pronúncia certa** | Ensine como falar nomes difíceis (`Thalyta=Talíta`). Só a voz muda, a tela continua igual. |
 | 💸 | **Econômico** | Grupos de baixa prioridade não gastam a cota da IA: só entram no resumo de hora em hora. |
+| 🙊 | **Aviso curto** | Diz só *"Mensagem de Ana, no grupo X"*. O conteúdo só é lido quando você diz **"leia"**. |
+| 🎙️ | **Áudio com a sua voz** | "Mande um áudio para a Ana": grava, limpa o ruído, corta o silêncio e envia como áudio de voz do WhatsApp. |
+| 🔗 | **Links** | *"Ana mandou um link"* → diga **"abra o link"** e ele abre no navegador do PC (só endereços http/https). |
+| ✋ | **"Cancelar" a qualquer hora** | Para na hora o que estiver falando, ouvindo ou gravando. Nada é enviado. |
+| 🔁 | **Nada se perde** | Recupera o que chegou com o PC desligado e avisa tudo de uma vez: *"Enquanto eu estava desligado, chegaram mensagens de…"*. |
+| 💤 | **Liga o PC pelo notebook** | Abriu a tampa do notebook com o PC desligado? Ele fala *"Ligando o PC"* e liga o PC pela rede (Wake-on-LAN). |
+| 🗨️ | **Entende gírias** | Abreviações de chat (vc, blz, pfv, kkkk…) são lidas por extenso. |
 
 ---
 
@@ -122,11 +129,36 @@ A página tem céu animado, uma esfera que reage à voz, cartões com os último
 | **"Envia mensagem para o Thiago"** | Pergunta *"Qual mensagem?"*, lê de volta e espera o "enviar". |
 | **"Envia mensagem para o Thiago dizendo que…"** | Vai direto para a confirmação. |
 | **"Me lembra às três de…"** | Cria um lembrete. Também aceita *"daqui a 20 minutos"* e *"amanhã de manhã"*. |
+| **"Leia"** | Lê a última mensagem avisada. |
+| **"Leia a última mensagem da Ana"** | Lê a última mensagem daquela pessoa (ou grupo), mesmo de horas atrás. |
+| **"Ouça o áudio"** / **"Ouça o último áudio da Ana"** | Toca o áudio original da pessoa. |
+| **"Responda a Ana"** / **"Responda a Ana com áudio"** | Responde por texto ditado ou gravando a sua voz. |
+| **"Mande um áudio para a Ana"** | Grava e envia um áudio de voz. Termina sozinho depois de 3 s de silêncio. |
+| **"Abra o link"** / **"Abra o link que a Ana mandou"** | Abre o link no navegador do PC. |
+| **"Que horas são?"** | Diz a hora e a data. |
+| **"Vai chover hoje?"** / **"Como está o tempo?"** | Temperatura de agora e previsão do dia. |
+| **"Lê meus e-mails de hoje"** | Resumo dos e-mails de pessoas que chegaram hoje (sem propaganda). |
+| **"Repete"** | Fala de novo a última coisa que disse. |
 | **"Até amanhã"** | Despede-se e desliga o PC em 15 s. |
-| **"Cancela"** | Cancela o desligamento ou a mensagem que estava sendo confirmada. |
+| **"Cancelar"** | Em qualquer momento e em qualquer frase: para tudo o que está em andamento (e desfaz o "até amanhã"). |
 | **"Enviar"** / **"Pode mandar"** / **"Sim"** | Confirma o envio. |
 
-> 🛡️ **Segurança contra disparo acidental:** "até amanhã", "cancela" e "responda" só valem como **frase curta** (até 4 palavras). "Tchau, até amanhã, pessoal" de uma visita não desliga nada.
+> 🛡️ **Segurança contra disparo acidental:** "até amanhã" só vale como a **frase inteira** e "responda" sozinho só como **frase curta**. "Vamos conversar até amanhã" ou "tchau, até amanhã, pessoal" de uma visita não desligam nada.
+
+---
+
+## 💤 Ligar o PC abrindo o notebook (opcional)
+
+Com o PC desligado, o Vigia também está desligado. Por isso quem liga o PC é um programinha que fica no **notebook**:
+ao desbloquear ou abrir a tampa, se o PC não responder, ele fala *"Ligando o PC"* (com a mesma voz do Vigia) e manda o
+**pacote mágico** de Wake-on-LAN. O PC liga, o Vigia inicia, a página do notebook reconecta e você ouve o bom dia.
+
+1. No PC: placa de rede com **Wake on Magic Packet** e **Shutdown Wake-On-LAN** ativados (Gerenciador de Dispositivos → placa de rede → Avançado) e Wake-on-LAN ligado na BIOS. O "até amanhã" já faz o desligamento completo.
+2. No notebook, com o Vigia ligado, baixe o instalador já preenchido com os dados do seu PC:
+   `http://IP-DO-PC:8765/notebook/ligar-pc.zip?k=sua-chave` (o mesmo link da página, trocando `/` por `/notebook/ligar-pc.zip`).
+3. Extraia e rode **instalar.bat** (não precisa ser administrador). Para remover: **desinstalar.bat**.
+
+O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 
 ---
 
@@ -224,6 +256,7 @@ vigia/
 ├── INICIAR.bat             # liga o Vigia
 ├── .env.example            # modelo de configuração
 ├── scripts/                # notificação, voz, inicialização com o Windows
+├── notebook/               # "Ligar o PC" (Wake-on-LAN) que roda no notebook
 └── src/
     ├── index.js            # ponto de entrada
     ├── whatsapp.js         # leitura, áudios, busca de contatos por som
@@ -231,7 +264,9 @@ vigia/
     ├── resumo.js           # resumo e prioridade (Gemini / Claude / simples)
     ├── avisos.js           # notificação, fila de voz, privacidade
     ├── conversa.js         # responder e enviar por voz, com confirmação
-    ├── comandos.js         # até amanhã, cancela, lembretes, bom dia
+    ├── comandos.js         # comandos de voz, lembretes, bom dia
+    ├── girias.js           # abreviações e gírias lidas por extenso
+    ├── ligar-pc.js         # monta o instalador do "Ligar o PC" para o notebook
     ├── lembretes.js        # lembretes por voz
     ├── pendencias.js       # conversas sem resposta
     ├── clima.js            # previsão do tempo

@@ -1,7 +1,7 @@
 // Comandos de voz ditos no notebook (a página fica ouvindo) e o "bom dia" ao ligar.
 //   "até amanhã" → avisa e desliga o PC por completo em 15 s ("cancela" nesse tempo desfaz)
 //   "responda"   → responde a última mensagem de WhatsApp (dos últimos 15 min)
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, DADOS } from './config.js';
@@ -10,73 +10,367 @@ import { log, dizer, naFila, notificar, ultimoAvisoWhatsApp, enviarPeloWhatsApp 
 const TESTE = process.env.VIGIA_TESTE_DESLIGAR === '1'; // ensaio: não desliga de verdade
 let desligando = false;
 
+// Roda o shutdown.exe e devolve se o Windows aceitou (antes era "atira e esquece": um erro passava em silêncio).
 function shutdown(args) {
-  if (TESTE) { log(`(ENSAIO) shutdown ${args.join(' ')}`); return; }
-  spawn('shutdown.exe', args, { windowsHide: true, detached: true, stdio: 'ignore' }).unref();
+  if (TESTE) { log(`(ENSAIO) shutdown ${args.join(' ')}`); return Promise.resolve(true); }
+  return new Promise((ok) => {
+    const p = spawn('shutdown.exe', args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let err = ''; p.stdout.on('data', (d) => (err += d)); p.stderr.on('data', (d) => (err += d));
+    p.on('error', (e) => { log(`shutdown ${args.join(' ')}: ${e.message}`); ok(false); });
+    p.on('close', (c) => { if (c) log(`shutdown ${args.join(' ')} recusado (código ${c}): ${err.trim().slice(0, 160)}`); ok(c === 0); });
+  });
 }
 
 async function ateAmanha() {
   if (desligando) return;
   desligando = true;
   log('comando: até amanhã → desligando o PC em 15 s');
-  // fala por cima da fila (é um comando direto) e agenda o desligamento completo (sem inicialização rápida)
+  // fala por cima da fila (é um comando direto) e agenda o desligamento.
+  // Sem "/hybrid" o desligamento já é completo (sem inicialização rápida). Atenção: "/full" NÃO existe e fazia o Windows recusar.
   await dizer('Até amanhã! Desligando o PC em 15 segundos. Se quiser cancelar, diga cancela.');
-  shutdown(['/s', '/full', '/f', '/t', '15', '/c', 'Vigia: até amanhã! Desligando o PC.']);
+  const ok = await shutdown(['/s', '/f', '/t', '15', '/c', 'Vigia: até amanhã! Desligando o PC.']);
+  if (!ok) { desligando = false; await dizer('Não consegui desligar o PC. Desligue pelo menu Iniciar.'); return; }
   notificar('🌙 Até amanhã', 'O PC desliga em 15 segundos. Diga "cancela" para desfazer.', true);
+  setTimeout(() => { desligando = false; }, 60_000); // se por algum motivo não desligar, libera um novo "até amanhã"
 }
 
+// "Cancelar" (em qualquer frase): para o que estiver falando/ouvindo/gravando, descarta a fila e,
+// se o PC estiver para desligar, desfaz o desligamento.
 async function cancelar() {
-  if (!desligando) return;
-  desligando = false;
-  shutdown(['/a']);
-  log('comando: cancela → desligamento cancelado');
-  await dizer('Cancelado. O PC continua ligado.');
+  const { cancelarTudo } = await import('./avisos.js');
+  await cancelarTudo();
+  conversaAtiva = false;
+  if (desligando) {
+    desligando = false;
+    await shutdown(['/a']);
+    log('comando: cancela → desligamento cancelado');
+    return naFila(() => dizer('Cancelado. O PC continua ligado.'));
+  }
+  return naFila(() => dizer('Cancelado.'));
+}
+
+// Uma conversa de responder/enviar por vez: cliques repetidos ou "responda" em sequência não enfileiram várias.
+let conversaAtiva = false;
+async function umaConversa(nome, fn) {
+  if (conversaAtiva) { log(`comando ${nome} ignorado: já existe uma conversa em andamento`); return; }
+  conversaAtiva = true;
+  try { await fn(); } finally { conversaAtiva = false; }
 }
 
 async function responder(textoOuvido) {
-  const item = ultimoAvisoWhatsApp();
-  if (!item) { await naFila(() => dizer('Não tem mensagem recente para responder.')); return; }
-  const { talvezResponder } = await import('./conversa.js');
-  await naFila(() => talvezResponder(item, { dizer, enviar: enviarPeloWhatsApp(), pedido: textoOuvido }));
+  return umaConversa('responda', async () => {
+    const item = ultimoAvisoWhatsApp();
+    if (!item) { await naFila(() => dizer('Não tem mensagem recente para responder.')); return; }
+    const { talvezResponder } = await import('./conversa.js');
+    await naFila(() => talvezResponder(item, { dizer, enviar: enviarPeloWhatsApp(), pedido: textoOuvido }));
+  });
 }
 
 // "Envia mensagem para o Dênisson" (opcional: "... dizendo que chego às sete")
 const tirarAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const limparNome = (s) => String(s || '').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').trim();
-async function enviarPara(t) {
+// Acha o contato/grupo pelo nome falado (pelo som; pergunta "para quem?" e "qual deles?" se precisar).
+// → destino { jid, de, grupo?, privado } ou null (já avisou por voz que cancelou)
+async function escolherDestino(nome) {
   const { buscarDestino, nomesConhecidos } = await import('./whatsapp.js');
-  const { enviarMensagemPorVoz, perguntar } = await import('./conversa.js');
+  const { perguntar } = await import('./conversa.js');
+  const nomes = nomesConhecidos();
+  // "para mim" / "pra mim mesmo": o seu próprio número (conversa "Você"), bom para testar
+  if (/^(mim|mim mesmo|eu|eu mesmo|meu numero|meu número|meu zap)$/i.test(String(nome || '').trim())) {
+    const { jidProprio } = await import('./whatsapp.js');
+    if (jidProprio()) return { jid: jidProprio(), de: 'você', privado: false };
+  }
+  if (!nome) nome = await perguntar(dizer, 'Para quem?', 'contato', nomes);
+  if (!nome) { await dizer('Não ouvi o nome. Cancelei.'); return null; }
+  let r = buscarDestino(nome);
+  if (r.tipo === 'nenhum') {
+    nome = await perguntar(dizer, `Não achei ${nome}. Fala só o nome do contato.`, 'contato', nomes);
+    r = nome ? buscarDestino(nome) : r;
+  }
+  if (r.tipo === 'nenhum') { await dizer('Não achei esse contato. Cancelei, não enviei nada.'); return null; }
+  let destino = r.destino;
+  if (r.tipo === 'varios') {
+    const ord = ['primeiro', 'segundo', 'terceiro', 'quarto'];
+    const lista = r.opcoes.map((o, i) => `${ord[i]}, ${limparNome(o.de)}`).join('; ');
+    const resp = tirarAcento(await perguntar(dizer, `Encontrei: ${lista}. Qual deles?`, 'escolha', r.opcoes.map((o) => o.de)));
+    let i = ord.findIndex((o) => resp.includes(o));
+    if (i < 0) i = [/\b(um|1)\b/, /\b(dois|2)\b/, /\b(tres|3)\b/, /\b(quatro|4)\b/].findIndex((re) => re.test(resp));
+    if (i < 0 && resp) { const r2 = buscarDestino(resp); if (r2.tipo === 'ok') i = r.opcoes.findIndex((o) => o.jid === r2.destino.jid); }
+    if (i < 0 || !r.opcoes[i]) { await dizer('Não entendi qual. Cancelei, não enviei nada.'); return null; }
+    destino = r.opcoes[i];
+  }
+  return { ...destino, privado: !destino.grupo && config.privados.some((p) => tirarAcento(destino.de).includes(tirarAcento(p))) };
+}
+const nomeDoComando = (s) => s.replace(/^(o|a)\s+/i, '').replace(/[.,!?]+$/, '').trim();
+
+async function enviarPara(t) {
+  const { enviarMensagemPorVoz } = await import('./conversa.js');
   let resto = (/mensage\w*\s+(?:para|pra|pro|pr[oa]s?|ao|à|a)\s+(.+)$/i.exec(t) || [])[1] || '';
   let texto = '';
   const d = /\s*,?\s+(?:dizendo|falando|avisando|perguntando)\s+(.+)$/i.exec(resto);
   if (d) { texto = d[1].replace(/^que\s+/i, ''); resto = resto.slice(0, d.index); }
-  let nome = resto.replace(/^(o|a)\s+/i, '').replace(/[.,!?]+$/, '').trim();
-
+  const nome = nomeDoComando(resto);
   await naFila(async () => {
-    const nomes = nomesConhecidos();
-    if (!nome) nome = await perguntar(dizer, 'Para quem?', 'contato', nomes);
-    if (!nome) return dizer('Não ouvi o nome. Cancelei.');
-    let r = buscarDestino(nome);
-    if (r.tipo === 'nenhum') {
-      nome = await perguntar(dizer, `Não achei ${nome}. Fala só o nome do contato.`, 'contato', nomes);
-      r = nome ? buscarDestino(nome) : r;
-    }
-    if (r.tipo === 'nenhum') return dizer('Não achei esse contato. Cancelei, não enviei nada.');
-    let destino = r.destino;
-    if (r.tipo === 'varios') {
-      const ord = ['primeiro', 'segundo', 'terceiro', 'quarto'];
-      const lista = r.opcoes.map((o, i) => `${ord[i]}, ${limparNome(o.de)}`).join('; ');
-      const resp = tirarAcento(await perguntar(dizer, `Encontrei: ${lista}. Qual deles?`, 'escolha', r.opcoes.map((o) => o.de)));
-      let i = ord.findIndex((o) => resp.includes(o));
-      if (i < 0) i = [/\b(um|1)\b/, /\b(dois|2)\b/, /\b(tres|3)\b/, /\b(quatro|4)\b/].findIndex((re) => re.test(resp));
-      if (i < 0 && resp) { const r2 = buscarDestino(resp); if (r2.tipo === 'ok') i = r.opcoes.findIndex((o) => o.jid === r2.destino.jid); }
-      if (i < 0 || !r.opcoes[i]) return dizer('Não entendi qual. Cancelei, não enviei nada.');
-      destino = r.opcoes[i];
-    }
-    destino = { ...destino, privado: !destino.grupo && config.privados.some((p) => tirarAcento(destino.de).includes(tirarAcento(p))) };
+    const destino = await escolherDestino(nome);
+    if (!destino) return;
     log(`enviar por voz: destino ${destino.de}${destino.grupo ? ' (grupo)' : ''}`);
     await enviarMensagemPorVoz(destino, texto, { dizer, enviar: enviarPeloWhatsApp() });
   });
+}
+
+// "Mande um áudio para o Dênisson": grava a sua voz e envia como áudio do WhatsApp (com conferência antes)
+async function enviarAudioPara(t) {
+  const { enviarAudioPorVoz } = await import('./conversa.js');
+  const { enviarAudioPeloWhatsApp } = await import('./avisos.js');
+  const nome = nomeDoComando((/[aá]udio\w*\s+(?:para|pra|pro|pr[oa]s?|ao|à|a)\s+(.+)$/i.exec(t) || [])[1] || '');
+  await naFila(async () => {
+    const destino = await escolherDestino(nome);
+    if (!destino) return;
+    log(`áudio por voz: destino ${destino.de}${destino.grupo ? ' (grupo)' : ''}`);
+    await enviarAudioPorVoz(destino, { dizer, enviarAudio: enviarAudioPeloWhatsApp() });
+  });
+}
+
+// "Ouça o áudio": TOCA o áudio original da pessoa. Se não conseguir tocar, lê a transcrição.
+export async function ouvirAudio(jid, nome, audioJa) {
+  const { ultimoAudio } = await import('./whatsapp.js');
+  const a = audioJa || ultimoAudio(jid) || (jid ? null : ultimoAudio());
+  if (!a) return dizer('Não achei áudio recente para ouvir.');
+  const quem = nome ? ` de ${nome}` : '';
+  const arq = path.join(DADOS, 'voz', `audio-${Date.now()}.wav`);
+  const ok = await new Promise((res) => {
+    const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', 'pipe:0', '-ac', '1', '-ar', '24000', arq], { windowsHide: true });
+    ff.on('error', () => res(false)); ff.on('close', (c) => res(c === 0)); ff.stdin.on('error', () => {}); ff.stdin.end(a.buf);
+  });
+  if (ok) {
+    log(`ouvir áudio: tocando o original${quem} (${a.seg}s)`);
+    const { tocarArquivo } = await import('./avisos.js');
+    await tocarArquivo(arq);
+    setTimeout(() => fs.unlink(arq, () => {}), 120_000);
+    return;
+  }
+  // não deu para tocar: lê a transcrição
+  let texto = a.texto;
+  if (!texto) {
+    try { const { transcrever } = await import('./transcrever.js'); texto = await transcrever(a.buf, [], a.tipo); a.texto = texto || ''; }
+    catch (e) { log(`ouvir áudio: transcrição falhou (${e.message})`); }
+  }
+  if (texto) return dizer(`Não consegui tocar o áudio${quem}. Ele diz: "${texto}"`);
+  return dizer('Não consegui tocar nem transcrever esse áudio agora.');
+}
+const ehAudioSemTexto = (item) => /^\[(enviou|mandou) um áudio/.test(String(item?.texto || '')) && !/dizendo:\]/.test(String(item?.texto || ''));
+
+// "Leia" dito a qualquer momento: lê a última mensagem/e-mail avisado (até 30 min)
+async function lerUltima() {
+  const { ultimoAviso, textoParaLer } = await import('./avisos.js');
+  const item = ultimoAviso();
+  if (!item) return naFila(() => dizer('Não tem mensagem recente para ler.'));
+  if (ehAudioSemTexto(item)) return naFila(() => ouvirAudio(item.jid, item.de)); // áudio que não deu para transcrever
+  const de = item.grupo ? `${item.de}, no grupo ${item.grupo}` : item.de;
+  return naFila(() => dizer(`${item.canal === 'email' ? 'E-mail de' : 'Mensagem de'} ${de}. ${textoParaLer(item)}`));
+}
+
+// ---------- comandos com o NOME da pessoa ----------
+// "leia a última mensagem do Ana", "ouça o último áudio da Carla", "responda o Diego com áudio"
+const HIST = path.join(DADOS, 'historico.jsonl');
+const VERBOS = /^\W*(pode\s+)?(leia|le|ler|ouca|ouve|ouvir|escuta|escute|escutar|toca|toque|tocar|reproduz\w*|responda|responde|responder)\b/;
+const POR_AUDIO = /\b(com|por|em|via|mandando|num|no)\s+(um\s+)?audio\b/;
+/** Tira do comando falado o verbo, "a última mensagem", "com áudio"… e devolve { nome, porAudio }. */
+export function entenderPedido(t) {
+  let s = tirarAcento(t).replace(/[.,!?;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const porAudio = POR_AUDIO.test(s);
+  s = s.replace(VERBOS, '')
+    .replace(/\b(com|por|em|via|mandando|num|no)\s+(um\s+)?(audio|texto|mensagem|escrito)\b.*$/, '')
+    .replace(/^\s*(pra mim\s+)?((a|o|as|os)\s+)?(ultim[ao]s?\s+)?(mensage\w*|msg|audios?|recados?|zap)?\s*/, '')
+    .replace(/^(que\s+)?(d[oa]s?|de|pro|pra|para|ao|a|o)\s+/, '')
+    .replace(/\s+(mandou|enviou|me mandou|me enviou)\b.*$/, '')
+    .trim();
+  return { nome: nomeDoComando(s), porAudio };
+}
+
+// A conversa do contato/grupo pelo nome falado (sem perguntar nada se não achar) → destino ou null
+async function acharConversa(nome) {
+  if (!nome) return null;
+  const { buscarDestino, idsDoContato } = await import('./whatsapp.js');
+  const r = buscarDestino(nome);
+  const destino = r.tipo === 'ok' ? r.destino : r.tipo === 'varios' ? r.opcoes[0] : null;
+  if (!destino) return null;
+  return { ...destino, ids: destino.grupo ? [destino.jid] : idsDoContato(destino.jid) };
+}
+
+// Última mensagem dessa conversa no histórico (o que o Vigia avisou), até 7 dias
+function ultimaDoHistorico(ids) {
+  let linhas = [];
+  try {
+    const fd = fs.openSync(HIST, 'r'); const tam = fs.fstatSync(fd).size; const ler = Math.min(tam, 3_000_000);
+    const buf = Buffer.alloc(ler); fs.readSync(fd, buf, 0, ler, tam - ler); fs.closeSync(fd);
+    linhas = buf.toString('utf8').split('\n');
+  } catch { return null; }
+  const limite = Date.now() - 7 * 86_400_000;
+  for (let i = linhas.length - 1; i >= 0; i--) {
+    let x; try { x = JSON.parse(linhas[i]); } catch { continue; }
+    if (x.canal !== 'whatsapp' || !x.jid || Date.parse(x.quando) < limite) continue;
+    if (ids.includes(x.jid)) return x;
+  }
+  return null;
+}
+
+async function lerUltimaDe(t) {
+  const { nome } = entenderPedido(t);
+  if (!nome) return lerUltima();
+  const c = await acharConversa(nome);
+  if (!c) return naFila(() => dizer(`Não achei ${nome} nos seus contatos.`));
+  const quem = limparNome(c.de);
+  const item = ultimaDoHistorico(c.ids);
+  if (!item) return naFila(() => dizer(`Não tenho mensagem recente ${c.grupo ? 'do grupo' : 'de'} ${quem}.`));
+  log(`voz: lendo a última mensagem de ${quem}`);
+  const { textoParaLer } = await import('./avisos.js');
+  const hora = new Date(item.quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (ehAudioSemTexto(item)) {
+    const { ultimoAudioDe } = await import('./whatsapp.js');
+    return naFila(() => ouvirAudio(null, quem, ultimoAudioDe(c.ids)));
+  }
+  return naFila(() => dizer(`${c.grupo ? `No grupo ${quem}` : `Última mensagem de ${quem}`}, às ${hora}. ${textoParaLer(item)}`));
+}
+
+async function ouvirAudioDe(t) {
+  const { nome } = entenderPedido(t);
+  const c = await acharConversa(nome);
+  if (!c) return naFila(() => dizer(nome ? `Não achei ${nome} nos seus contatos.` : 'De quem é o áudio?'));
+  const { ultimoAudioDe } = await import('./whatsapp.js');
+  const a = ultimoAudioDe(c.ids);
+  const quem = limparNome(c.de);
+  if (!a) return naFila(() => dizer(`Não tenho áudio recente ${c.grupo ? 'do grupo' : 'de'} ${quem}.`));
+  log(`voz: tocando o último áudio de ${quem}`);
+  return naFila(() => ouvirAudio(null, quem, a));
+}
+
+// "Responda o Ana" (texto ditado) / "responda o Ana com áudio" (grava sua voz). Sem nome: a última avisada.
+async function responderPara(t) {
+  const { nome, porAudio } = entenderPedido(t);
+  let destino = null;
+  if (nome) {
+    destino = await escolherDestino(nome);
+    if (!destino) return;
+  } else {
+    const item = ultimoAvisoWhatsApp();
+    if (!item) return naFila(() => dizer('Não tem mensagem recente para responder.'));
+    destino = { jid: item.jid, de: item.grupo || item.de, grupo: item.grupo, privado: item.privado };
+  }
+  log(`responder por voz: ${destino.de}${porAudio ? ' (áudio)' : ''}`);
+  if (porAudio) {
+    const { enviarAudioPorVoz } = await import('./conversa.js');
+    const { enviarAudioPeloWhatsApp } = await import('./avisos.js');
+    return naFila(() => enviarAudioPorVoz(destino, { dizer, enviarAudio: enviarAudioPeloWhatsApp() }));
+  }
+  const { enviarMensagemPorVoz } = await import('./conversa.js');
+  return naFila(() => enviarMensagemPorVoz(destino, '', { dizer, enviar: enviarPeloWhatsApp() }));
+}
+
+// ---------- respostas rápidas ----------
+// "Que horas são?"
+function horaFalada(d = new Date()) {
+  const h = d.getHours(), m = d.getMinutes();
+  const hs = h === 0 ? 'meia-noite' : h === 12 ? 'meio-dia' : h === 1 || h === 13 ? 'uma hora' : `${h} horas`;
+  const ms = m === 0 ? '' : m === 30 ? ' e meia' : ` e ${m}${m === 1 ? ' minuto' : ''}`;
+  return `${h === 0 || h === 12 || h === 1 || h === 13 ? 'É' : 'São'} ${hs}${ms}.`;
+}
+async function dizerHora() {
+  const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  return naFila(() => dizer(`${horaFalada()} Hoje é ${hoje}.`));
+}
+
+// "Vai chover hoje?" / "Como está o tempo?"
+async function dizerClima() {
+  const { previsaoHoje, temperaturaAgora } = await import('./clima.js');
+  const [prev, agora] = await Promise.all([previsaoHoje(), temperaturaAgora()]);
+  if (!prev && agora == null) return naFila(() => dizer('Não consegui ver a previsão agora. Tenta de novo daqui a pouco.'));
+  return naFila(() => dizer(`${agora != null ? `Agora está fazendo ${agora} graus. ` : ''}${prev}`));
+}
+
+// "Lê meus e-mails de hoje": os e-mails de pessoas que chegaram hoje (sem propaganda/newsletter)
+async function lerEmailsHoje() {
+  const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
+  let linhas = [];
+  try {
+    const fd = fs.openSync(HIST, 'r'); const tam = fs.fstatSync(fd).size; const ler = Math.min(tam, 3_000_000);
+    const buf = Buffer.alloc(ler); fs.readSync(fd, buf, 0, ler, tam - ler); fs.closeSync(fd);
+    linhas = buf.toString('utf8').split('\n');
+  } catch {}
+  const emails = [];
+  for (const l of linhas) {
+    let x; try { x = JSON.parse(l); } catch { continue; }
+    if (x.canal !== 'email' || Date.parse(x.quando) < inicio.getTime()) continue;
+    if (['silencio', 'baixa'].includes(x.prioridade)) continue;
+    emails.push(x);
+  }
+  if (!emails.length) return naFila(() => dizer('Hoje não chegou nenhum e-mail de pessoas, só propaganda ou nada.'));
+  const mostrar = emails.slice(-6);
+  const partes = mostrar.map((e) => {
+    const hora = new Date(e.quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `Às ${hora}, de ${limparNome(e.de)}: ${e.resumo || e.assunto || 'sem assunto'}`;
+  });
+  const total = emails.length === 1 ? 'Hoje chegou 1 e-mail.' : `Hoje chegaram ${emails.length} e-mails.`;
+  const extra = emails.length > mostrar.length ? ` Esses são os ${mostrar.length} mais recentes.` : '';
+  log(`voz: lendo os e-mails de hoje (${emails.length})`);
+  return naFila(() => dizer(`${total}${extra} ${partes.join('. ')}.`));
+}
+
+// "Abra o link" (o último link que chegou) / "abra o link do Ana" / "abre o link que a Bia mandou"
+function nomeDoLink(t) {
+  const s = tirarAcento(t).replace(/[.,!?;:]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/^\W*(pode\s+)?(abra|abre|abrir|abri)\s+(o\s+|os\s+)?(ultimo\s+)?links?\s*/, '')
+    .replace(/^que\s+/, '')
+    .replace(/^(d[oa]s?|de)\s+/, '')
+    .replace(/^(o|a)\s+/, '')
+    .replace(/\s+(mandou|enviou|me mandou|me enviou|passou)\b.*$/, '')
+    .trim();
+  return nomeDoComando(s);
+}
+// o item mais recente do histórico com link (de uma conversa, ou de qualquer uma), até 7 dias
+function ultimoLinkDoHistorico(ids, acharLink) {
+  let linhas = [];
+  try {
+    const fd = fs.openSync(HIST, 'r'); const tam = fs.fstatSync(fd).size; const ler = Math.min(tam, 3_000_000);
+    const buf = Buffer.alloc(ler); fs.readSync(fd, buf, 0, ler, tam - ler); fs.closeSync(fd);
+    linhas = buf.toString('utf8').split('\n');
+  } catch { return null; }
+  const limite = Date.now() - 7 * 86_400_000;
+  for (let i = linhas.length - 1; i >= 0; i--) {
+    let x; try { x = JSON.parse(linhas[i]); } catch { continue; }
+    if (x.canal !== 'whatsapp' || Date.parse(x.quando) < limite) continue;
+    if (ids && !ids.includes(x.jid)) continue;
+    if (!ids && x.prioridade === 'baixa') continue; // sem nome: ignora grupo de promoção (Lobão)
+    const url = acharLink(x.texto);
+    if (url) return { url, de: x.grupo ? `${limparNome(x.de)}, no grupo ${limparNome(x.grupo)}` : limparNome(x.de) };
+  }
+  return null;
+}
+async function abrirUltimoLink(t) {
+  const { acharLink, abrirLink, ultimoAviso } = await import('./avisos.js');
+  const nome = nomeDoLink(t);
+  let achado = null;
+  if (nome) {
+    const c = await acharConversa(nome);
+    if (!c) return naFila(() => dizer(`Não achei ${nome} nos seus contatos.`));
+    achado = ultimoLinkDoHistorico(c.ids, acharLink);
+    if (!achado) return naFila(() => dizer(`Não achei link recente ${c.grupo ? 'no grupo' : 'de'} ${limparNome(c.de)}.`));
+  } else {
+    const item = ultimoAviso();
+    const url = item && acharLink(item.texto);
+    achado = url ? { url, de: item.de } : ultimoLinkDoHistorico(null, acharLink);
+    if (!achado) return naFila(() => dizer('Não achei nenhum link recente.'));
+  }
+  log(`voz: abrindo o link de ${achado.de}: ${achado.url}`);
+  const ok = await abrirLink(achado.url);
+  return naFila(() => dizer(ok ? `Abrindo o link de ${achado.de}.` : 'Não consegui abrir esse link.'));
+}
+
+// "Repete": fala de novo a última coisa que o Vigia disse
+async function repetir() {
+  const { ultimaFala } = await import('./avisos.js');
+  const t = ultimaFala();
+  return naFila(() => dizer(t || 'Não tenho nada para repetir.'));
 }
 
 // "Me lembra às três de ligar pro cliente"
@@ -84,7 +378,9 @@ async function novoLembrete(t) {
   const { criarLembrete, quandoFalado } = await import('./lembretes.js');
   const r = await criarLembrete(t);
   await naFila(() => {
-    if (r.ok) return dizer(`Combinado. ${quandoFalado(r.lembrete.quando)}, eu te lembro de ${r.lembrete.texto}.`);
+    if (r.ok) return dizer(r.lembrete.texto === 'lembrete'
+      ? `Combinado. ${quandoFalado(r.lembrete.quando)}, eu te lembro.`
+      : `Combinado. ${quandoFalado(r.lembrete.quando)}, eu te lembro de ${r.lembrete.texto}.`);
     if (r.motivo === 'passado') return dizer('Esse horário já passou. Fala de novo com outro horário.');
     if (r.motivo === 'sem-hora') return dizer('Não entendi o horário. Fala, por exemplo: me lembra às três da tarde de ligar pro cliente.');
     return dizer('Não consegui criar o lembrete agora. Tenta de novo daqui a pouco.');
@@ -97,14 +393,38 @@ export function iniciarComandos(af) {
     const nome = config.saudacaoNome ? config.saudacaoNome.replace(/^Sr\.?\s*/i, 'senhor ') + ', ' : '';
     notificar(`⏰ Lembrete${atrasado ? ' (atrasado)' : ''}`, l.texto, true);
     af.mostrarAviso({ canal: 'lembrete', de: '⏰ Lembrete', resumo: l.texto, urgente: true, hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) });
-    naFila(() => dizer(`${nome}lembrete${atrasado ? ' atrasado, era para ' + new Date(l.quando).getHours() + ' horas' : ''}: ${l.texto}.`));
+    const sobre = l.texto === 'lembrete' ? `são ${new Date(l.quando).getHours()} horas` : l.texto; // lembrete sem assunto
+    naFila(() => dizer(`${nome}lembrete${atrasado ? ' atrasado, era para ' + new Date(l.quando).getHours() + ' horas' : ''}: ${sobre}.`));
   }));
   af.aoComando(async (c, t) => {
     // segunda trava (caso a página seja antiga): desligar/cancelar só com frase curta; o botão manda "(botão)"
     const curta = t.includes('(botão)') || t.trim().split(/\s+/).filter(Boolean).length <= 4;
-    if ((c === 'ate-amanha' || c === 'cancela') && !curta) { log(`comando ignorado (frase longa demais): "${t}"`); return; }
-    if (c === 'enviar' && config.responderVoz) return enviarPara(t);
+    if (c === 'ate-amanha' && !curta) { log(`comando ignorado (frase longa demais): "${t}"`); return; }
+    // "até amanhã" só vale como a frase inteira (segunda trava, igual à da página)
+    const tn = t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    if (c === 'ate-amanha' && !t.includes('(botão)') && !/^\W*((tchau|valeu|boa noite|ok)\W+)?ate amanha(\W+(vigia|jarvis))?\W*$/.test(tn)) {
+      log(`comando ignorado ("até amanhã" no meio de outra frase): "${t}"`); return;
+    }
+    if (c === 'enviar' && config.responderVoz) return umaConversa('enviar', () => enviarPara(t));
+    if (c === 'enviar-audio' && config.responderVoz) return umaConversa('enviar-audio', () => enviarAudioPara(t));
     if (c === 'lembrete') return novoLembrete(t);
+    if (c === 'leia') return lerUltima();
+    if (c === 'leia-de') return lerUltimaDe(t);
+    if (c === 'hora') return dizerHora();
+    if (c === 'clima') return dizerClima();
+    if (c === 'emails') return lerEmailsHoje();
+    if (c === 'repete') return repetir();
+    if (c === 'abrir-link') return abrirUltimoLink(t);
+    if (c === 'ouca-de') return ouvirAudioDe(t);
+    if (c === 'responda-de' && config.responderVoz) return umaConversa('responda-de', () => responderPara(t));
+    if (c === 'ouca-audio') {
+      // áudio da última mensagem avisada (se foi áudio); senão, o último áudio recebido de qualquer conversa
+      const { ultimoAviso } = await import('./avisos.js');
+      const { ultimoAudio } = await import('./whatsapp.js');
+      const item = ultimoAviso();
+      const doAviso = item?.jid && ultimoAudio(item.jid);
+      return naFila(() => ouvirAudio(doAviso ? item.jid : null, doAviso ? item.de : null));
+    }
     if (c === 'ate-amanha') return ateAmanha();
     if (c === 'cancela') return cancelar();
     if (c === 'responda' && config.responderVoz) return responder(t);

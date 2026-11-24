@@ -3,7 +3,7 @@
 import makeWASocket, {
   useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, Browsers,
   normalizeMessageContent, getContentType, isJidGroup, isJidBroadcast, isJidStatusBroadcast, isJidNewsletter, jidNormalizedUser,
-  downloadMediaMessage,
+  downloadMediaMessage, proto,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
@@ -12,7 +12,7 @@ import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DADOS } from './config.js';
-import { log, notificar, registrarEnvio } from './avisos.js';
+import { log, notificar, registrarEnvio, registrarEnvioAudio } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
 
@@ -70,22 +70,103 @@ const estaArquivada = (ids) => ids.some((i) => arquivadas.has(jidNormalizedUser(
 export const totalArquivadas = () => arquivadas.size;
 
 // ---------- áudios recebidos: baixa e transcreve com o Gemini ----------
+// Os últimos áudios ficam guardados (só na memória, 1 hora) para o "ouça o áudio" — inclusive os que não deu para transcrever.
+const audiosRecentes = []; // { jid, buf, tipo, seg, quando, texto }
 async function transcreverAudio(msg, descricao) {
   const m = normalizeMessageContent(msg.message);
   const audio = m?.audioMessage;
   if (!audio) return descricao;
   const seg = Math.round(audio.seconds || 0);
-  if (seg > 300) return descricao; // áudios de mais de 5 min: só avisa
+  let guardado = null;
   try {
     const buf = await downloadMediaMessage(msg, 'buffer', {});
     const tipo = String(audio.mimetype || 'audio/ogg').split(';')[0];
-    const fala = await transcrever(buf, [], tipo);
-    if (fala) { log(`WhatsApp: áudio de ${seg}s transcrito`); return `[mandou um áudio de ${seg} segundos dizendo:] ${fala}`; }
+    const autorJid = msg.key.participantAlt || msg.key.participant || msg.key.remoteJidAlt || '';
+    guardado = { jid: jidNormalizedUser(msg.key.remoteJid), autor: autorJid ? jidNormalizedUser(autorJid) : '', buf, tipo, seg, quando: Date.now(), texto: '' };
+    audiosRecentes.push(guardado);
+    salvarAudioEmDisco(guardado);
+    while (audiosRecentes.length > 20 || (audiosRecentes[0] && Date.now() - audiosRecentes[0].quando > 3600_000)) audiosRecentes.shift();
+    if (seg > 300) return descricao; // áudios de mais de 5 min: não transcreve na chegada (dá para tocar com "ouça o áudio")
+    // no máximo 12 s: com o Gemini sobrecarregado, o aviso não pode ficar esperando (dá para ouvir o original)
+    const fala = await Promise.race([transcrever(buf, [], tipo), new Promise((_, nao) => setTimeout(() => nao(new Error('demorou mais de 12 s')), 12_000))]);
+    if (fala) { guardado.texto = fala; salvarAudioEmDisco(guardado); log(`WhatsApp: áudio de ${seg}s transcrito`); return `[mandou um áudio de ${seg} segundos dizendo:] ${fala}`; }
   } catch (e) { log(`WhatsApp: não consegui transcrever o áudio (${e.message})`); }
   return descricao;
 }
 
-// ---------- busca de contato/grupo pelo nome falado ("envia mensagem para Thiago") ----------
+let meuJid = '';
+let sockAtual = null;
+/** Seu próprio número (conversa "Você"), para testes sem incomodar ninguém. */
+export const jidProprio = () => meuJid;
+
+/** "Onda sonora" do áudio de voz (64 valores 0–100), calculada do próprio arquivo com o ffmpeg. */
+export async function calcularOnda(ogg) {
+  const { spawn } = await import('node:child_process');
+  const pcm = await new Promise((ok) => {
+    const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], { windowsHide: true });
+    const partes = []; ff.stdout.on('data', (d) => partes.push(d));
+    ff.on('close', () => ok(Buffer.concat(partes))); ff.on('error', () => ok(Buffer.alloc(0)));
+    ff.stdin.on('error', () => {}); ff.stdin.end(ogg);
+  });
+  const n = Math.floor(pcm.length / 2); if (!n) return undefined;
+  const blocos = 64, tam = Math.max(1, Math.floor(n / blocos)), medias = [];
+  for (let b = 0; b < blocos; b++) { let s = 0; for (let i = b * tam; i < Math.min(n, (b + 1) * tam); i++) s += Math.abs(pcm.readInt16LE(i * 2)); medias.push(s / tam); }
+  const max = Math.max(...medias) || 1;
+  return new Uint8Array(medias.map((m) => Math.round((m / max) * 100)));
+}
+
+
+// O ÚLTIMO áudio de cada conversa e de cada pessoa também fica em disco (dados/audios, um por id, sobrescreve):
+// "ouça o último áudio da Ana" funciona mesmo depois de reiniciar o PC.
+const PASTA_AUDIOS = path.join(DADOS, 'audios');
+const nomeArq = (id) => path.join(PASTA_AUDIOS, String(id).replace(/[^0-9a-z@._-]/gi, '_'));
+function salvarAudioEmDisco(a) {
+  try {
+    fs.mkdirSync(PASTA_AUDIOS, { recursive: true });
+    const meta = JSON.stringify({ jid: a.jid, autor: a.autor, tipo: a.tipo, seg: a.seg, quando: a.quando, texto: a.texto });
+    for (const id of new Set([a.jid, a.autor].filter(Boolean))) {
+      fs.writeFileSync(nomeArq(id) + '.audio', a.buf);
+      fs.writeFileSync(nomeArq(id) + '.json', meta);
+    }
+  } catch (e) { log(`WhatsApp: não guardou o áudio em disco (${e.message})`); }
+}
+/** Todas as formas do id de um contato (telefone e @lid), pela agenda. */
+export function idsDoContato(jid) {
+  const n = jidNormalizedUser(jid);
+  const ids = new Set([n]);
+  const c = contatos[n];
+  for (const x of [c?.lid, c?.phoneNumber, c?.id]) if (x) ids.add(jidNormalizedUser(x));
+  for (const [id, o] of Object.entries(contatos)) {
+    if ([o.lid, o.phoneNumber, o.id].filter(Boolean).map((x) => jidNormalizedUser(x)).includes(n)) ids.add(jidNormalizedUser(id));
+  }
+  return [...ids];
+}
+/** Último áudio de uma pessoa ou grupo (qualquer um dos ids): da memória ou, depois de reiniciar, do disco. */
+export function ultimoAudioDe(ids) {
+  for (let i = audiosRecentes.length - 1; i >= 0; i--) {
+    const a = audiosRecentes[i];
+    if (ids.includes(a.jid) || ids.includes(a.autor)) return a;
+  }
+  let melhor = null;
+  for (const id of ids) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(nomeArq(id) + '.json', 'utf8'));
+      if (!melhor || meta.quando > melhor.quando) melhor = { ...meta, arq: nomeArq(id) + '.audio' };
+    } catch {}
+  }
+  if (!melhor) return null;
+  try { return { ...melhor, buf: fs.readFileSync(melhor.arq) }; } catch { return null; }
+}
+
+/** Último áudio recebido (de um chat, ou de qualquer um). → { jid, buf, tipo, seg, texto } | null */
+export const _audiosRecentes = audiosRecentes; // (usado só nos testes)
+export function ultimoAudio(jid) {
+  const n = jid ? jidNormalizedUser(jid) : null;
+  for (let i = audiosRecentes.length - 1; i >= 0; i--) if (!n || audiosRecentes[i].jid === n) return audiosRecentes[i];
+  return null;
+}
+
+// ---------- busca de contato/grupo pelo nome falado ("envia mensagem para Dênisson") ----------
 const gruposTodos = {}; // jid → nome do grupo
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -95,7 +176,7 @@ function lev(a, b) { // distância de edição (erros de transcrição: "tiago" 
   for (let i = 1; i <= m; i++) { const at = [i]; for (let j = 1; j <= n; j++) at[j] = Math.min(ant[j] + 1, at[j - 1] + 1, ant[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); ant = at; }
   return ant[n];
 }
-// "chave de som" em português: Thiago / Tiago → "tiago"; Thalyta / Talita → "talita"; Luíz / Luis → "luis"
+// "chave de som" em português: Thiago / Tiago / Thyago → "tiago"; Thalyta / Talita → "talita"
 const som = (w) => w.replace(/ph/g, 'f').replace(/h/g, '').replace(/y/g, 'i').replace(/w/g, 'v').replace(/k/g, 'c')
   .replace(/qu/g, 'c').replace(/z/g, 's').replace(/(.)\1+/g, '$1');
 const parecido = (a, b) => a === b || som(a) === som(b) ||
@@ -104,18 +185,20 @@ function pontuar(q, nome) {
   if (!q || !nome) return 0;
   if (q === nome) return 100;
   const pq = q.split(' '), pn = nome.split(' ');
-  const extra = Math.max(0, pn.length - pq.length) * 3; // "Thiago" vence "Thiago Souza Comercial"
+  const extra = Math.max(0, pn.length - pq.length) * 3; // "Thiago" vence "Thiago Oficina Mecânica"
   if (som(q) === som(nome)) return 95;
   if (nome.startsWith(q + ' ') || pn[0] === q) return 85 - extra;
   if (pq.every((w) => pn.includes(w))) return 72 - extra;
   if (pq.every((w) => pn.some((x) => som(x) === som(w)))) return 68 - extra;
   if (pq.every((w) => pn.some((x) => parecido(w, x)))) return 55 - extra;
+  // começo do som: "Rafa" → "Rafael", "Gabi" → "Gabriela"
+  if (pq.length === 1 && som(q).length >= 3 && pn.some((x) => som(x).startsWith(som(q)))) return 60 - extra;
   if (pq.length === 1 && q.length >= 4 && pn.some((x) => x.startsWith(q))) return 45 - extra;
   return 0;
 }
 /** Nomes conhecidos (para ajudar a transcrição a acertar a grafia). */
 export function nomesConhecidos() {
-  return [...new Set([...Object.values(contatos).map((c) => c.name || c.notify), ...Object.values(gruposTodos)].filter(Boolean))];
+  return [...new Set([...Object.values(contatos).map((c) => c.name), ...Object.values(gruposTodos)].filter(Boolean))];
 }
 /** → { tipo: 'ok', destino } | { tipo: 'varios', opcoes: [destino...] } | { tipo: 'nenhum' } */
 export function buscarDestino(nomeFalado) {
@@ -123,7 +206,8 @@ export function buscarDestino(nomeFalado) {
   if (!q) return { tipo: 'nenhum' };
   const porNome = new Map(); // um destino por nome (o mesmo contato pode ter id de telefone e @lid)
   for (const [jid, c] of Object.entries(contatos)) {
-    const nome = c.name || c.notify; if (!nome) continue;
+    // só contatos SALVOS na agenda: o nome de perfil de quem você não salvou (ex.: "Dennis" de um grupo) não entra
+    const nome = c.name; if (!nome) continue;
     const p = pontuar(q, norm(nome)); if (!p) continue;
     const atual = porNome.get(nome);
     const melhorJid = !atual || (jid.endsWith('@s.whatsapp.net') && !atual.destino.jid.endsWith('@s.whatsapp.net'));
@@ -139,9 +223,38 @@ export function buscarDestino(nomeFalado) {
   return { tipo: 'varios', opcoes: melhores.slice(0, 4).map((x) => x.destino) };
 }
 
+// Mensagens que o Vigia enviou (últimas 200), gravadas em disco. Quando um aparelho não consegue abrir uma
+// delas (no celular aparece "Aguardando mensagem"), ele pede reenvio e o Baileys busca aqui (getMessage).
+const ARQ_ENVIADAS = path.join(DADOS, 'enviadas.json');
+let enviadas = {};
+try { enviadas = JSON.parse(fs.readFileSync(ARQ_ENVIADAS, 'utf8')); } catch {}
+function guardarEnviada(m) {
+  try {
+    if (!m?.key?.id || !m.message) return;
+    enviadas[m.key.id] = Buffer.from(proto.Message.encode(m.message).finish()).toString('base64');
+    const ids = Object.keys(enviadas);
+    for (const id of ids.slice(0, Math.max(0, ids.length - 200))) delete enviadas[id];
+    fs.writeFileSync(ARQ_ENVIADAS, JSON.stringify(enviadas));
+  } catch (e) { log(`WhatsApp: não guardou a mensagem enviada (${e.message})`); }
+}
+async function buscarEnviada(key) {
+  const b64 = enviadas[key?.id];
+  if (!b64) return undefined;
+  log(`WhatsApp: um aparelho pediu reenvio da mensagem ${key.id}: reenviando`);
+  return proto.Message.decode(Buffer.from(b64, 'base64'));
+}
+
 export function iniciarWhatsApp(aoChegar) {
-  // aceita mensagens de até 3 min antes de ligar (cobre reinícios rápidos) e ignora repetidas
-  const inicio = Math.floor(Date.now() / 1000) - 180;
+  // Recupera o que chegou enquanto o Vigia estava fora (PC desligado, reinício): aceita mensagens desde a última
+  // vez que ele esteve ligado (dados/whatsapp-visto.txt, gravado a cada 30 s), no máximo 18 h para trás.
+  // As que chegaram ANTES de ligar viram "atrasadas": não são faladas uma a uma, entram num aviso único.
+  const agoraS = Math.floor(Date.now() / 1000);
+  const ARQ_VISTO = path.join(DADOS, 'whatsapp-visto.txt');
+  let visto = 0;
+  try { visto = Number(fs.readFileSync(ARQ_VISTO, 'utf8')) || 0; } catch {}
+  const inicio = visto ? Math.max(visto - 120, agoraS - 18 * 3600) : agoraS - 180;
+  const marcarVisto = () => { try { fs.writeFileSync(ARQ_VISTO, String(Math.floor(Date.now() / 1000))); } catch {} };
+  marcarVisto(); setInterval(marcarVisto, 30_000).unref?.();
   const vistos = new Set();
   const nomesGrupo = {};
   const buffers = new Map(); // junta mensagens seguidas do mesmo chat (8 s)
@@ -162,7 +275,7 @@ export function iniciarWhatsApp(aoChegar) {
       buffers.delete(chave);
       const texto = b.grupo ? b.linhas.map((l) => `${l.autor}: ${l.texto}`).join('\n') : b.linhas.map((l) => l.texto).join('\n');
       const de = b.grupo ? [...new Set(b.linhas.map((l) => l.autor))].slice(0, 3).join(', ') : b.de;
-      aoChegar({ canal: 'whatsapp', jid: chave, de, grupo: b.grupo, texto, quantidade: b.linhas.length });
+      aoChegar({ canal: 'whatsapp', jid: chave, de, grupo: b.grupo, texto, quantidade: b.linhas.length, ...(b.atrasada ? { atrasada: true } : {}) });
     }, 4000);
   }
 
@@ -173,17 +286,30 @@ export function iniciarWhatsApp(aoChegar) {
     const sock = makeWASocket({
       ...(version ? { version } : {}),
       auth: state,
-      logger: pino({ level: 'silent' }),
+      // só avisos e erros do WhatsApp, num arquivo à parte (para diagnosticar falhas de grupo/criptografia)
+      logger: pino({ level: process.env.VIGIA_WA_LOG || 'warn' }, pino.destination({ dest: path.join(DADOS, 'whatsapp-erros.log'), sync: false })),
+      getMessage: buscarEnviada,
       browser: Browsers.windows('Vigia'),
       markOnlineOnConnect: false,   // não aparece online: o celular continua recebendo notificação
       syncFullHistory: false,
-      shouldSyncHistoryMessage: () => false,
+      // recusa só o histórico COMPLETO. Os pacotes leves trazem o mapa telefone↔LID: sem eles a criptografia dos
+      // grupos falha (mensagens de grupo sem aviso, áudio "Aguardando mensagem" no seu celular).
+      // O histórico chega pelo evento messaging-history.set, que o Vigia não lê: não gera avisos.
+      shouldSyncHistoryMessage: ({ syncType }) => syncType !== proto.HistorySync.HistorySyncType.FULL,
       generateHighQualityLinkPreview: false,
     });
 
     sock.ev.on('creds.update', saveCreds);
     // Única forma de envio: a resposta ditada e confirmada por voz (conversa.js).
-    registrarEnvio(async (jid, texto) => { await sock.sendMessage(jid, { text: texto }); });
+    registrarEnvio(async (jid, texto) => { guardarEnviada(await sock.sendMessage(jid, { text: texto })); });
+    // áudio de voz (o "de bolinha azul"): OGG/Opus mono, ptt = gravado na hora
+    registrarEnvioAudio(async (jid, ogg, segundos) => {
+      // com a "onda sonora" calculada (as barrinhas do áudio de voz)
+      const m = await sock.sendMessage(jid, { audio: ogg, mimetype: 'audio/ogg; codecs=opus', ptt: true, seconds: segundos, waveform: await calcularOnda(ogg) });
+      guardarEnviada(m);
+      return m;
+    });
+    meuJid = jidNormalizedUser(sock.user?.id || ""); sockAtual = sock;
     sock.ev.on('contacts.upsert', (lista) => { for (const c of lista) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); });
     sock.ev.on('contacts.update', (lista) => { for (const c of lista) if (c.id) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); });
     sock.ev.on('groups.update', (lista) => { for (const g of lista) if (g.id && g.subject) nomesGrupo[g.id] = g.subject; });
@@ -192,6 +318,19 @@ export function iniciarWhatsApp(aoChegar) {
     sock.ev.on('chats.upsert', lerChats);
     sock.ev.on('chats.update', lerChats);
     sock.ev.on('messaging-history.set', ({ chats }) => lerChats(chats));
+
+    // Mensagens pendentes vêm em lotes de 100 e cada lote precisa ser PEDIDO. O Baileys só pede o primeiro:
+    // se havia mais de 100 pendentes (noite com muitos grupos), o servidor fica esperando e NÃO entrega nada ao
+    // vivo (só no próximo reinício). Aqui: continua pedindo lotes até o servidor avisar que acabou ("offline").
+    let pendentesOk = false, lotes = 0;
+    sock.ws.on('CB:ib,,offline', () => { pendentesOk = true; if (lotes) log(`WhatsApp: mensagens pendentes recebidas (${lotes + 1} lotes)`); });
+    sock.ws.on('CB:ib,,offline_preview', () => {
+      const pedirMais = setInterval(async () => {
+        if (pendentesOk || lotes >= 40 || sockAtual !== sock) return clearInterval(pedirMais);
+        lotes++;
+        try { await sock.sendNode({ tag: 'ib', attrs: {}, content: [{ tag: 'offline_batch', attrs: { count: '100' } }] }); } catch {}
+      }, 4000);
+    });
 
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
@@ -256,17 +395,23 @@ export function iniciarWhatsApp(aoChegar) {
           if (vistos.has(msg.key.id)) continue;
           vistos.add(msg.key.id); if (vistos.size > 2000) vistos.delete(vistos.values().next().value);
           let texto = descrever(msg.message);
-          if (!texto) continue;
+          if (!texto) {
+            // não dá para ler: mostra o motivo no log (ex.: falha de criptografia do grupo = stub 2 "CIPHERTEXT")
+            if (msg.messageStubType || !msg.message) log(`WhatsApp: mensagem ilegível em ${jid} (stub ${msg.messageStubType || '-'} ${(msg.messageStubParameters || []).join(' ')})`);
+            continue;
+          }
           texto = await transcreverAudio(msg, texto);
+          const atrasada = Number(msg.messageTimestamp || 0) < agoraS - 30; // chegou antes do Vigia ligar
+          if (atrasada) log(`WhatsApp: recuperada mensagem de quando o Vigia estava fora (${new Date(Number(msg.messageTimestamp) * 1000).toLocaleTimeString('pt-BR')})`);
           if (isJidGroup(jid)) {
             const autorJid = msg.key.participantAlt || msg.key.participant || '';
-            enfileirar(jid, { grupo: await nomeGrupo(sock, jid) }, { autor: nomeDe(autorJid, msg.pushName), texto });
+            enfileirar(jid, { grupo: await nomeGrupo(sock, jid), atrasada }, { autor: nomeDe(autorJid, msg.pushName), texto });
           } else {
             const remet = msg.key.remoteJidAlt || jid;
             if (msg.pushName) { const id = jidNormalizedUser(remet); contatos[id] = { ...contatos[id], notify: msg.pushName }; salvarContatos(); }
             const nome = nomeDe(remet, msg.pushName);
             recebeu(idsChat, nome);
-            enfileirar(jid, { de: nome }, { texto });
+            enfileirar(jid, { de: nome, atrasada }, { texto });
           }
         } catch (e) { log(`WhatsApp: erro ao ler mensagem (${e.message})`); }
       }

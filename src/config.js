@@ -62,6 +62,8 @@ export const config = {
   micOrigem: (e.MICROFONE_ORIGEM || 'notebook').trim().toLowerCase(),
   // Contatos privados: a voz diz só "Mensagem de <nome>", sem conteúdo (pedaço do nome, separados por vírgula)
   privados: (e.PRIVADOS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  // 1 = o aviso diz só de quem é (e o grupo); o conteúdo é lido quando você diz "leia". 0 = já lê tudo no aviso.
+  lerSobDemanda: num(e.LER_SOB_DEMANDA, 1) === 1,
   // Responder por voz (só WhatsApp): depois de cada aviso o microfone abre por alguns segundos esperando "responda"
   responderVoz: num(e.RESPONDER_VOZ, 1) === 1,
   microfone: (e.MICROFONE || '').trim(),           // vazio = escolhe sozinho (prefere headset/USB)
