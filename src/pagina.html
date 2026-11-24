@@ -41,6 +41,15 @@ canvas#ceu{position:fixed;inset:0;width:100%;height:100%;display:block}
 /* avisos */
 .base{display:flex;justify-content:center}
 .lista{width:min(720px,100%);display:flex;flex-direction:column;gap:8px}
+/* rascunho editável (antes de enviar) */
+.rascunho{width:min(720px,100%);padding:14px 16px;border-radius:16px;background:rgba(255,217,160,.08);border:1px solid rgba(255,217,160,.45);backdrop-filter:blur(12px);
+  box-shadow:0 0 34px rgba(255,179,92,.18);animation:entra .5s cubic-bezier(.2,.8,.2,1) both;pointer-events:auto;display:flex;flex-direction:column;gap:10px}
+.rascunho[hidden]{display:none}
+.rasc-topo{font-weight:600;color:var(--ouro)} .rasc-topo small{display:block;font-weight:400;color:var(--sub);font-size:12.5px;margin-top:2px}
+.rascunho textarea{font:16px/1.45 "Inter Tight",system-ui;color:var(--txt);background:rgba(0,0,0,.35);border:1px solid var(--borda);border-radius:12px;padding:10px 12px;resize:vertical;min-height:70px;outline:none}
+.rascunho textarea:focus{border-color:rgba(255,217,160,.7)}
+.rasc-botoes{display:flex;gap:10px;justify-content:flex-end}
+.mag.pri{background:linear-gradient(180deg,var(--ouro),var(--ouro2));color:#1d1306;border-color:transparent}
 .aviso{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 16px;border-radius:14px;
   background:var(--vidro);border:1px solid var(--borda);backdrop-filter:blur(10px);animation:entra .7s cubic-bezier(.2,.8,.2,1) both}
 .aviso > div{min-width:0} .aviso .ic{font-size:18px} .aviso .q{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .aviso .r{color:var(--sub);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -112,6 +121,11 @@ canvas#ceu{position:fixed;inset:0;width:100%;height:100%;display:block}
 
   <footer class="base">
     <div class="pilha">
+      <div class="rascunho" id="rascunho" hidden role="dialog" aria-label="Mensagem antes de enviar">
+        <div class="rasc-topo">✏️ <span id="rascPara">Mensagem</span> <small>edite se quiser e clique em Enviar · ou fale "pode", "troca X por Y", "acrescenta…"</small></div>
+        <textarea id="rascTexto" rows="3" spellcheck="true"></textarea>
+        <div class="rasc-botoes"><button class="mag" id="rascCancelar">Cancelar</button><button class="mag pri" id="rascEnviar">Enviar ✓</button></div>
+      </div>
       <div class="dock">
         <button class="mag" id="bResp" title="Responder a última mensagem do WhatsApp por voz">💬 Responder</button>
         <button class="mag" id="bMusica" title="Liga com música tocando: pausa os comandos de voz contínuos, deixa a voz mais alta e adapta a gravação ao som da música">🎵 Modo música</button>
@@ -421,6 +435,14 @@ async function gravarRecado(p){
 
 // Ouvir com o reconhecimento de voz do próprio Chrome: grátis, sem cota (o Gemini só entra se não houver Chrome).
 // Devolve o TEXTO pronto ao PC. Termina após `silencioMs` sem fala nova, ou em `maxMs`.
+// rascunho editável: digitar avisa o PC para esperar; "Enviar"/"Cancelar" respondem pela caixa (e param a escuta de voz)
+let rascId=null, avisouEditando=false;
+const rascPost=(corpo)=>{ if(rascId) fetch('/rascunho/'+rascId+'?k='+k,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)}).catch(()=>{}); };
+const pararEscuta=()=>{ const f=pararAtual; pararAtual=null; try{ f&&f(); }catch(e){} };
+$('rascTexto').addEventListener('input',()=>{ if(!avisouEditando){ avisouEditando=true; rascPost({acao:'editando'}); } });
+$('rascEnviar').addEventListener('click',()=>{ const t=$('rascTexto').value.trim(); if(!t) return; rascPost({acao:'enviar',texto:t}); pararEscuta(); $('rascunho').hidden=true; });
+$('rascCancelar').addEventListener('click',()=>{ rascPost({acao:'cancelar'}); pararEscuta(); $('rascunho').hidden=true; });
+$('rascTexto').addEventListener('keydown',e=>{ if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); $('rascEnviar').click(); } });
 function enviarTexto(id, texto){ fetch('/fala/'+id+'?k='+k,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:texto||''}).catch(()=>{}); }
 async function ouvirComChrome(p){
   try { const ac=contexto(); await ac.resume(); const t=ac.currentTime, os=ac.createOscillator(), g=ac.createGain();
@@ -564,6 +586,10 @@ $('b').onclick = async () => {
   es.onerror = ()=> chip('cConex','mal','Reconectando ao PC…');
   es.addEventListener('tocar', e=>tocar(e.data));
   es.addEventListener('ouvir', e=>ouvir(JSON.parse(e.data)));
+  // rascunho: a mensagem antes de enviar, editável
+  es.addEventListener('rascunho', e=>{ const r=JSON.parse(e.data); rascId=r.id; $('rascunho').hidden=false; $('rascPara').textContent=r.para||'Mensagem';
+    if (document.activeElement!==$('rascTexto')) $('rascTexto').value=r.texto||''; avisouEditando=false; });
+  es.addEventListener('rascunho-fim', e=>{ const r=JSON.parse(e.data); if(r.id===rascId){ rascId=null; $('rascunho').hidden=true; } });
   es.addEventListener('parar', ()=>{ pararTudo(); estado('Cancelado','cmd'); setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },2500); });
   es.addEventListener('aviso', e=>aviso(JSON.parse(e.data)));
   es.addEventListener('config', e=>{ const c=JSON.parse(e.data); if('nome' in c){ NOME=c.nome; relogio(); } });

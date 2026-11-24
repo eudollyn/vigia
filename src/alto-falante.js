@@ -41,6 +41,25 @@ export function enderecos() {
   return ips.map((ip) => `http://${ip}:${config.altoFalantePorta}/?k=${chave}`);
 }
 
+// ---------- rascunho editável: a mensagem aparece numa caixa na página, com "Enviar" e "Cancelar" ----------
+const rascunhos = new Map(); // id → { resolver, editando, promessa }
+/** Mostra (ou atualiza) o rascunho na página. → { id, promessa (resolve com {texto} ou {cancelar}), editando() } */
+export function mostrarRascunho(texto, para, idAnterior) {
+  const id = idAnterior && rascunhos.has(idAnterior) ? idAnterior : crypto.randomBytes(6).toString('hex');
+  if (!rascunhos.has(id)) {
+    let resolver; const promessa = new Promise((ok) => { resolver = ok; });
+    rascunhos.set(id, { resolver: (v) => { resolver(v); }, editando: false, promessa });
+  }
+  const dados = JSON.stringify({ id, texto, para });
+  for (const c of clientes) c.res.write(`event: rascunho\ndata: ${dados}\n\n`);
+  const r = rascunhos.get(id);
+  return { id, promessa: r.promessa, editando: () => r.editando };
+}
+export function esconderRascunho(id) {
+  rascunhos.delete(id);
+  for (const c of clientes) c.res.write(`event: rascunho-fim\ndata: ${JSON.stringify({ id })}\n\n`);
+}
+
 /** "Cancelar": manda o notebook parar (fala, escuta, gravação) e solta quem estava esperando. */
 export function pararTudo() {
   for (const c of clientes) { try { c.res.write('event: parar\ndata: 1\n\n'); } catch {} }
@@ -132,6 +151,22 @@ export function iniciarAltoFalante() {
     if (m && audios.has(m[1])) { res.writeHead(200, { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' }); fs.createReadStream(audios.get(m[1])).pipe(res); return; }
     m = /^\/tocado\/([a-f0-9]+)$/.exec(url.pathname);
     if (m && req.method === 'POST') { esperando.get(m[1])?.(true); res.writeHead(204).end(); return; }
+    // rascunho editado na página: { acao: 'enviar', texto } | { acao: 'cancelar' } | { acao: 'editando' }
+    m = /^\/rascunho\/([a-f0-9]+)$/.exec(url.pathname);
+    if (m && req.method === 'POST') {
+      const partes = []; req.on('data', (d) => partes.push(d));
+      req.on('end', () => {
+        let r = {}; try { r = JSON.parse(Buffer.concat(partes).toString('utf8')); } catch {}
+        const rasc = rascunhos.get(m[1]);
+        if (rasc) {
+          if (r.acao === 'editando') rasc.editando = true;
+          else if (r.acao === 'enviar' && String(r.texto || '').trim()) rasc.resolver({ texto: String(r.texto).trim().slice(0, 4000) });
+          else if (r.acao === 'cancelar') rasc.resolver({ cancelar: true });
+        }
+        res.writeHead(204).end();
+      });
+      return;
+    }
     if (url.pathname === '/comando' && req.method === 'POST') {
       const c = url.searchParams.get('c'), t = (url.searchParams.get('t') || '').slice(0, 300);
       res.writeHead(204).end();

@@ -257,6 +257,57 @@ export async function enviarMensagemPorVoz(destino, textoJa, { dizer, enviar }) 
 
 // Lê o texto de volta (ou só mostra na tela, se for contato privado) e só envia com "enviar"/"sim"/"pode".
 const semEmoji = (s) => String(s || '').replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/\s+/g, ' ').trim();
+// ---------- editar antes de enviar ----------
+// Na confirmação, além de "pode"/"cancela": "troca sete por oito", "apaga tô indo", "apaga a última frase",
+// "acrescenta beijos", "dita de novo", "editar" (explica). Na página, a mensagem fica numa caixa editável.
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// acha um trecho no texto ignorando maiúsculas, acentos e pontuação entre as palavras
+function acharTrecho(texto, trecho) {
+  const pal = semAcento(trecho).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  if (!pal.length) return null;
+  // letra a letra (ç → c, é → e…): fica com o MESMO tamanho do original, para recortar no lugar certo
+  const base = [...texto.normalize('NFC')].map((ch) => ch.normalize('NFD')[0]).join('').toLowerCase();
+  texto = texto.normalize('NFC');
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${pal.map(escRe).join('[^\\p{L}\\p{N}]+')}(?![\\p{L}\\p{N}])`, 'u');
+  const m = re.exec(base);
+  return m ? { inicio: m.index, fim: m.index + m[0].length } : null;
+}
+// junta espaços e pontuação que sobraram (mantém a PRIMEIRA: "pode ser?." → "pode ser?")
+const limpar = (t) => t.replace(/\s+([,.!?])/g, '$1').replace(/([,.!?])[,.!?]+/g, '$1').replace(/^[,.\s]+/, '').replace(/\s{2,}/g, ' ').trim();
+const comPonto = (t) => (/[.!?…]$/.test(t) ? t : t + '.');
+const maiuscula = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+/** fala na confirmação → { texto } (editado) | { redigitar } | { ajuda } | { naoAchei } | null (não é edição) */
+export function editarPorVoz(texto, fala) {
+  const f = fala.trim().replace(/[.!?]+$/, '');
+  const s = semAcento(f).toLowerCase();
+  if (/^(editar?|edite|mudar?|mude|corrig(e|ir)|altera[r]?|quero (editar|mudar|corrigir|alterar))( (a mensagem|o texto|isso|ela))?$/.test(s)) return { ajuda: true };
+  if (/^(dita[r]? de novo|vou (ditar|falar) de novo|fala[r]? de novo|reescreve[r]?|comeca de novo|recomeca[r]?|apaga tudo|de novo)$/.test(s)) return { redigitar: true };
+  let m;
+  if ((m = /^(?:troca|trocar|troque|muda|mude|mudar|substitui|substitua|corrige|corrija)\s+(.+?)\s+(?:por|pra|para|pelo|pela)\s+(.+)$/i.exec(f))) {
+    const a = acharTrecho(texto, m[1]); if (!a) return { naoAchei: m[1] };
+    const t0 = texto.normalize('NFC');
+    // o trecho trocado começava com maiúscula (início de frase)? a troca também começa
+    const novo = /^\p{Lu}/u.test(t0.slice(a.inicio)) ? maiuscula(m[2]) : m[2];
+    return { texto: limpar(t0.slice(0, a.inicio) + novo + t0.slice(a.fim)) };
+  }
+  if (/^(apaga|apague|tira|tire|remove|remova|corta|corte)\s+a\s+ultima\s+frase$/.test(s)) {
+    const partes = texto.match(/[^.!?]+[.!?]*/g) || [texto];
+    return partes.length > 1 ? { texto: limpar(partes.slice(0, -1).join('')) } : { naoAchei: 'outra frase' };
+  }
+  if (/^(apaga|apague|tira|tire|remove|remova|corta|corte)\s+a\s+ultima\s+palavra$/.test(s)) {
+    return { texto: limpar(texto.replace(/[.!?]+$/, '').replace(/\s*\S+$/, '')) + '.' };
+  }
+  if ((m = /^(?:apaga|apague|tira|tire|remove|remova|corta|corte)\s+(?:a palavra\s+|o trecho\s+)?(.+)$/i.exec(f))) {
+    const a = acharTrecho(texto, m[1]); if (!a) return { naoAchei: m[1] };
+    const t0 = texto.normalize('NFC');
+    return { texto: maiuscula(limpar(t0.slice(0, a.inicio) + ' ' + t0.slice(a.fim))) };
+  }
+  if ((m = /^(?:acrescenta|acrescente|adiciona|adicione|coloca|coloque|bota|bote|poe|põe|inclui|inclua)\s+(?:no final\s+|no fim\s+|tamb[eé]m\s+|ainda\s+)?(?:que\s+)?(.+)$/i.exec(f))) {
+    return { texto: limpar(`${comPonto(texto.replace(/\s+$/, ''))} ${comPonto(maiuscula(m[1]))}`) };
+  }
+  return null;
+}
+
 async function confirmarEEnviar(item, texto, { dizer, enviar, verbo }) {
   item = { ...item, de: semEmoji(item.de), grupo: item.grupo && semEmoji(item.grupo) };
   // o ditado do Chrome vem sem pontuação: coloca vírgulas, ponto e interrogação antes de ler de volta e enviar
@@ -265,35 +316,54 @@ async function confirmarEEnviar(item, texto, { dizer, enviar, verbo }) {
   texto = await pont.pontuar(texto);
   if (texto !== antes) log(`voz: pontuado "${texto}"${pont.ultimoErro ? ` (regra simples: ${pont.ultimoErro})` : ''}`);
   const para = item.grupo ? `o grupo ${item.grupo}` : item.de;
-  let tentativasExtra = 0, repetirTexto = true;
-  for (let tentativa = 0; tentativa < 2; tentativa++) {
-    if (repetirTexto) {
-      if (item.privado) {
-        // contato privado: o texto aparece só na tela, a voz não lê
-        notificar(`Mensagem para ${item.de}`, texto);
-        await dizer(`Vou ${verbo} para ${para}. O texto está na tela. Posso enviar?`);
-      } else await dizer(`Vou ${verbo} para ${para}: ${texto}. Posso enviar?`);
-    }
-    repetirTexto = true;
-    const bruto = await ouvirTexto({ esperaMs: 7000, silencioMs: 1200, maxMs: 30000 }, 'confirmação');
-    const resp = semAcento(bruto).toLowerCase();
-    if (bruto) log(`voz: ouvi na confirmação "${bruto}"`);
-    if (confirmou(resp)) {
-      try {
-        await enviar(item.jid, texto);
-        log(`ENVIADO para ${para}: ${texto}`);
-        await dizer('Enviado.');
-      } catch (e) {
-        log(`erro ao enviar para ${para}: ${e.message}`);
-        await dizer('Não consegui enviar. A mensagem não foi.');
+  const af = config.saidaVoz !== 'pc' ? await import('./alto-falante.js') : null;
+  let rasc = null;
+  const fecharRascunho = () => { if (rasc && af) af.esconderRascunho(rasc.id); };
+  const enviarAgora = async (t) => {
+    fecharRascunho();
+    try { await enviar(item.jid, t); log(`ENVIADO para ${para}: ${t}`); await dizer('Enviado.'); }
+    catch (e) { log(`erro ao enviar para ${para}: ${e.message}`); await dizer('Não consegui enviar. A mensagem não foi.'); }
+  };
+  let primeira = true, naoEntendi = 0, falar = true;
+  try {
+    for (let rodada = 0; rodada < 10; rodada++) {
+      // a caixa editável na página (atualiza a cada edição)
+      if (af) rasc = af.mostrarRascunho(texto, `Mensagem para ${para}`, rasc?.id);
+      let digitado = null;
+      rasc?.promessa.then((v) => { digitado = v; });
+      if (falar) {
+        const pergunta = primeira ? 'Posso enviar, ou quer editar?' : 'Posso enviar?';
+        if (item.privado) { notificar(`Mensagem para ${item.de}`, texto); await dizer(`Vou ${verbo} para ${para}. O texto está na tela. ${pergunta}`); }
+        else await dizer(`${primeira ? `Vou ${verbo} para ${para}` : 'Ficou assim'}: ${texto}. ${pergunta}`);
       }
-      return;
+      primeira = false; falar = true;
+      const bruto = await ouvirTexto({ esperaMs: 7000, silencioMs: 1200, maxMs: 30000 }, 'confirmação');
+      // digitou na página? espera terminar (até 3 min) em vez de cancelar por silêncio
+      if (!digitado && rasc?.editando()) digitado = await Promise.race([rasc.promessa, new Promise((ok) => setTimeout(() => ok(null), 180_000))]);
+      await new Promise((ok) => setTimeout(ok, 50));
+      if (digitado?.cancelar) { fecharRascunho(); await dizer('Cancelei. Não enviei nada.'); return; }
+      if (digitado?.texto) { log('voz: mensagem editada na página'); return enviarAgora(digitado.texto); }
+      const resp = semAcento(bruto).toLowerCase();
+      if (bruto) log(`voz: ouvi na confirmação "${bruto}"`);
+      if (confirmou(resp)) return enviarAgora(texto);
+      if (!resp) { fecharRascunho(); await dizer(falhouTranscricao ? naoOuvi('Cancelei, não enviei nada.') : 'Não ouvi a confirmação. Cancelei, não enviei nada.'); return; }
+      if (palavras(resp) <= 5 && CANCELA.test(resp) && !/\b(troca|apaga|tira|acrescenta|muda)\b/.test(resp)) { fecharRascunho(); await dizer('Cancelei. Não enviei nada.'); return; }
+      const ed = editarPorVoz(texto, bruto);
+      if (ed?.ajuda) { await dizer('Pode dizer: troca uma palavra por outra, apaga um trecho, apaga a última frase, acrescenta alguma coisa, ou dita de novo. Também dá para editar na tela.'); falar = false; continue; }
+      if (ed?.naoAchei) { await dizer(`Não achei "${ed.naoAchei}" na mensagem. Fala de novo o que quer mudar.`); falar = false; continue; }
+      if (ed?.redigitar) {
+        await dizer('Pode falar a mensagem de novo.');
+        const novo = await ouvirTexto({ esperaMs: 8000, silencioMs: 1600, maxMs: 45000 }, 'ditado');
+        if (!novo) { fecharRascunho(); await dizer(naoOuvi('Cancelei, não enviei nada.')); return; }
+        texto = await pont.pontuar(novo); log(`voz: mensagem ditada de novo: "${texto}"`); continue;
+      }
+      if (ed?.texto) { texto = ed.texto; log(`voz: mensagem editada: "${texto}"`); continue; }
+      // frase longa que não é comando de edição: é a mensagem nova inteira
+      if (palavras(resp) > 5) { texto = await pont.pontuar(bruto); log(`voz: mensagem trocada: "${texto}"`); continue; }
+      if (++naoEntendi > 1) break;
+      await dizer('Não entendi. Diga pode para enviar, cancela, ou o que quer mudar.'); falar = false;
     }
-    if (!resp) { await dizer(falhouTranscricao ? naoOuvi('Cancelei, não enviei nada.') : 'Não ouvi a confirmação. Cancelei, não enviei nada.'); return; }
-    if (palavras(resp) <= 5 && CANCELA.test(resp)) { await dizer('Cancelei. Não enviei nada.'); return; }
-    // frase longa: trata como correção do texto e confirma de novo
-    if (palavras(resp) > 5) texto = bruto;
-    else { await dizer('Não entendi. Diga enviar, ou cancela.'); repetirTexto = false; tentativa--; if (++tentativasExtra > 1) break; continue; }
-  }
-  await dizer('Não entendi. Cancelei, não enviei nada.');
+    fecharRascunho();
+    await dizer('Não entendi. Cancelei, não enviei nada.');
+  } catch (e) { fecharRascunho(); throw e; }
 }

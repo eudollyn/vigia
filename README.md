@@ -40,6 +40,7 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | 💻 | **Página do Vigia** | Abre sozinha no navegador do PC: fala, ouve os comandos e mostra os avisos. Quer usar de outro aparelho (notebook, tablet)? Também dá. |
 | 🎵 | **Modo música** | Pausa os comandos contínuos, aumenta a voz e adapta o microfone ao som da música. |
 | 🔒 | **Contatos privados** | Para quem você escolher, ele diz só "Mensagem de Fulano", sem ler o conteúdo. |
+| ✏️ | **Edita antes de enviar** | Na confirmação: *"troca sete por oito"*, *"apaga a última frase"*, *"acrescenta beijos"*, *"dita de novo"*. Ou corrige digitando na caixa que aparece na página. |
 | ↪️ | **Encaminha por voz** | *"Encaminha essa mensagem para a Bia"*: reenvia o original (texto, áudio, foto) com o selo **Encaminhada**, depois da sua confirmação. |
 | 🔕 | **Respeita o "silenciar" do WhatsApp** | Conversa silenciada no celular aparece só na tela, sem voz. Quando o silêncio acaba (8 h, 1 semana), volta a avisar. |
 | 📦 | **Respeita as arquivadas** | Conversas arquivadas no WhatsApp ficam em silêncio. Arquivou ou desarquivou no celular, ele atualiza na hora. |
@@ -171,6 +172,7 @@ A página tem céu animado, uma esfera que reage à voz, cartões com os último
 | **"Até amanhã"** | Despede-se e desliga o PC em 15 s. |
 | **"Cancelar"** | Em qualquer momento e em qualquer frase: para tudo o que está em andamento (e desfaz o "até amanhã"). |
 | **"Enviar"** / **"Pode mandar"** / **"Sim"** | Confirma o envio. |
+| **"Troca X por Y"** / **"Apaga X"** / **"Acrescenta X"** / **"Dita de novo"** | Edita a mensagem antes de enviar (na confirmação). Também dá para editar digitando na página. |
 
 > 🛡️ **Segurança contra disparo acidental:** "até amanhã" só vale como a **frase inteira** e "responda" sozinho só como **frase curta**. "Vamos conversar até amanhã" ou "tchau, até amanhã, pessoal" de uma visita não desligam nada.
 
