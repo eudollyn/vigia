@@ -413,6 +413,14 @@ async function voltarAvisar(t) {
   return naFila(() => dizer(`Pronto, volto a avisar ${quem}.${qtd ? ` Nesse tempo, chegaram ${qtd === 1 ? 'uma mensagem' : `${qtd} mensagens`}. Diga leia a última mensagem de ${quem} para ouvir.` : ''}`));
 }
 
+// "O que o Ana falou sobre o carro?": procura nas mensagens dos últimos 7 dias e responde falando
+async function perguntarAoHistorico(t) {
+  const { perguntarHistorico } = await import('./historico.js');
+  const r = await perguntarHistorico(t);
+  log(`voz: pergunta ao histórico "${t}"${r.nomes?.length ? ` (${r.nomes.join(', ')})` : ''} → ${r.resposta}`);
+  return naFila(() => dizer(r.resposta));
+}
+
 // "Repete": fala de novo a última coisa que o Vigia disse
 async function repetir() {
   const { ultimaFala } = await import('./avisos.js');
@@ -422,16 +430,36 @@ async function repetir() {
 
 // "Me lembra às três de ligar pro cliente"
 async function novoLembrete(t) {
+  const frase = await criarLembreteFalado(t);
+  await naFila(() => dizer(frase));
+}
+
+// "me lembra DISSO às três" / "me lembra de responder isso daqui a uma hora": o lembrete leva a mensagem junto
+const REFERENCIA = /\b(disso|isso|dessa mensagem|desta mensagem|essa mensagem|desse e-?mail|esse e-?mail|desse audio|desse áudio|esse audio|esse áudio)\b/i;
+/** Cria o lembrete e devolve a frase de confirmação. item = a mensagem a que "disso" se refere (padrão: o último aviso). */
+export async function criarLembreteFalado(t, item) {
   const { criarLembrete, quandoFalado } = await import('./lembretes.js');
-  const r = await criarLembrete(t);
-  await naFila(() => {
-    if (r.ok) return dizer(r.lembrete.texto === 'lembrete'
-      ? `Combinado. ${quandoFalado(r.lembrete.quando)}, eu te lembro.`
-      : `Combinado. ${quandoFalado(r.lembrete.quando)}, eu te lembro de ${r.lembrete.texto}.`);
-    if (r.motivo === 'passado') return dizer('Esse horário já passou. Fala de novo com outro horário.');
-    if (r.motivo === 'sem-hora') return dizer('Não entendi o horário. Fala, por exemplo: me lembra às três da tarde de ligar pro cliente.');
-    return dizer('Não consegui criar o lembrete agora. Tenta de novo daqui a pouco.');
-  });
+  let ajustar, sobre = '';
+  if (REFERENCIA.test(tirarAcento(t))) {
+    if (!item) { const { ultimoAviso } = await import('./avisos.js'); item = ultimoAviso(); }
+    if (!item) return 'Não tenho mensagem recente para lembrar. Fala o assunto, por exemplo: me lembra às três de ligar pro cliente.';
+    const de = limparNome(item.grupo ? `${item.de}, no grupo ${item.grupo}` : item.de);
+    sobre = `${item.canal === 'email' ? 'o e-mail' : 'a mensagem'} de ${de}`;
+    const conteudo = String(item.resumo || item.texto || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    ajustar = (txt) => {
+      const resto = txt.replace(new RegExp(REFERENCIA.source, 'gi'), '').replace(/\s+/g, ' ').replace(/\b(de|da|do)\s*$/i, '').trim();
+      return `${resto ? resto + ' ' : ''}${sobre}${conteudo ? ': ' + conteudo : ''}`;
+    };
+  }
+  const r = await criarLembrete(t, ajustar);
+  if (r.ok) {
+    const quando = quandoFalado(r.lembrete.quando);
+    if (sobre) return `Combinado. ${quando}, eu te lembro d${sobre.startsWith('o ') ? 'o' : 'a'} ${sobre.slice(2)}.`;
+    return r.lembrete.texto === 'lembrete' ? `Combinado. ${quando}, eu te lembro.` : `Combinado. ${quando}, eu te lembro de ${r.lembrete.texto}.`;
+  }
+  if (r.motivo === 'passado') return 'Esse horário já passou. Fala de novo com outro horário.';
+  if (r.motivo === 'sem-hora') return 'Não entendi o horário. Fala, por exemplo: me lembra disso às três, ou daqui a meia hora.';
+  return 'Não consegui criar o lembrete agora. Tenta de novo daqui a pouco.';
 }
 
 export function iniciarComandos(af) {
@@ -462,6 +490,7 @@ export function iniciarComandos(af) {
     if (c === 'emails') return lerEmailsHoje();
     if (c === 'repete') return repetir();
     if (c === 'abrir-link') return abrirUltimoLink(t);
+    if (c === 'perguntar') return perguntarAoHistorico(t);
     if (c === 'silenciar') return silenciarPessoa(t);
     if (c === 'dessilenciar') return voltarAvisar(t);
     if (c === 'ouca-de') return ouvirAudioDe(t);

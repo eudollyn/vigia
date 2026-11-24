@@ -118,13 +118,15 @@ function absoluto(fala) {
   return { quando: d.getTime(), texto: t.replace(/[.!?]+$/, '').trim() };
 }
 
-export async function criarLembrete(fala) {
+/** ajustarTexto(texto) → texto final (usado no "me lembra disso": troca o "disso" pela mensagem). */
+export async function criarLembrete(fala, ajustarTexto) {
   let r = relativo(fala) || absoluto(fala);
   if (r && !r.texto) r.texto = 'lembrete'; // sem assunto: "Senhor João, lembrete."
   if (!r) r = await interpretar(fala); // frase muito diferente: tenta a IA
   if (!r) return { ok: false, motivo: 'sem-hora' }; // nem o código nem a IA acharam um horário
   if (!r.quando) return { ok: false, motivo: 'sem-hora' };
   if (r.quando < Date.now() - 60_000) return { ok: false, motivo: 'passado' };
+  if (ajustarTexto) r.texto = ajustarTexto(r.texto === 'lembrete' ? '' : r.texto || '');
   const lembrete = { id: Date.now().toString(36), quando: r.quando, texto: r.texto || 'lembrete', feito: false };
   lista.push(lembrete); salvar();
   log(`lembrete criado para ${new Date(r.quando).toLocaleString('pt-BR')}: ${lembrete.texto}`);

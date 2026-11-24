@@ -96,6 +96,17 @@ export const desistiu = (t) => {
 const PEDIU_LEITURA = /\b(leia|le|ler|leiam|lendo|o que (ela |ele )?(diz|disse|falou|fala))\b/;
 // "ouça o áudio", "ouve o áudio", "toca o áudio", "escuta o áudio"…
 const PEDIU_AUDIO = /\b(ouca|ouve|ouvir|ouça|escuta|escute|escutar|toca|toque|tocar|reproduz|reproduza)\b.*\baudio\b|^\W*(ouca|ouve|escuta|toca|toque)\W*$/;
+// "me lembra disso às três", "me lembra de responder daqui a uma hora"
+const PEDIU_LEMBRETE = /^\W*(me\s+)?(lembra|lembre|lembrar|cria um lembrete|lembrete)\b/;
+async function lembrarDisso(fala, item, dizer) {
+  const { criarLembreteFalado } = await import('./comandos.js');
+  // na janela do aviso, "me lembra às três" sem assunto também é sobre esta mensagem
+  const sem = semAcento(fala).toLowerCase();
+  const temAssunto = /\b(disso|isso|dessa|desse|essa|esse)\b/.test(sem) || /\b(de|que|pra|para)\s+\S/.test(sem.replace(/^\W*(me\s+)?(lembra|lembre|lembrar)\s+/, ''));
+  const t = temAssunto ? fala : `${fala} disso`;
+  log(`voz: lembrete sobre a mensagem de ${item.de}`);
+  await dizer(await criarLembreteFalado(t, item));
+}
 // "abra o link", "abre", "abrir o link", "pode abrir"…
 const PEDIU_LINK = /\b(abra|abre|abrir|abri)\b.{0,20}\blinks?\b|^\W*(pode\s+)?(abra|abre|abrir)\W*$/;
 
@@ -111,6 +122,8 @@ export async function aposAviso(item, { dizer, enviar }) {
   if (!pedido) { if (falhouTranscricao) await dizer(naoOuvi('Diga leia de novo.')); return; }
   const p = semAcento(pedido).toLowerCase();
   if (podeResponder && PEDIU_RESPOSTA.test(p)) return talvezResponder(item, { dizer, enviar, pedido });
+  // "me lembra disso às três": lembrete com esta mensagem
+  if (PEDIU_LEMBRETE.test(p)) return lembrarDisso(pedido, item, dizer);
   // "abra o link": abre no navegador do PC
   if (PEDIU_LINK.test(p)) {
     const { acharLink, abrirLink } = await import('./avisos.js');
@@ -146,6 +159,7 @@ export async function aposAviso(item, { dizer, enviar }) {
     if (!podeResponder) return;
     depois = await ouvirTexto({ esperaMs: config.janelaMs, silencioMs: 900, maxMs: 15000 }, 'responda?');
   }
+  if (depois && PEDIU_LEMBRETE.test(semAcento(depois).toLowerCase())) return lembrarDisso(depois, item, dizer);
   if (depois && PEDIU_LINK.test(semAcento(depois).toLowerCase())) {
     const { acharLink, abrirLink } = await import('./avisos.js');
     const url = acharLink(item.texto);

@@ -50,6 +50,8 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | 🔁 | **Nada se perde** | Recupera o que chegou com o PC desligado e avisa tudo de uma vez: *"Enquanto eu estava desligado, chegaram mensagens de…"*. |
 | 💤 | **Liga o PC pelo notebook** | *Opcional, para quem também usa um notebook:* abriu a tampa com o PC desligado? Ele fala *"Ligando o PC"* e liga o PC pela rede (Wake-on-LAN). |
 | 🧵 | **Sem metralhadora de avisos** | Mensagens picadas viram um aviso só. Depois de avisar alguém, espera 2 min (menos se você estiver conversando com a pessoa) e diz *"Ana mandou mais 6 mensagens"*. Quer silêncio? *"Silencia a Ana por duas horas"*. |
+| 🔎 | **Pergunte às suas mensagens** | *"O que a Ana falou sobre o carro?"*, *"qual o valor que o Bruno passou?"*: procura no WhatsApp e no e-mail dos últimos 7 dias e responde falando. |
+| 📌 | **"Me lembra disso"** | Logo depois de um aviso: *"me lembra disso às três"*. O lembrete guarda de quem era a mensagem e o que ela dizia. |
 | ✍️ | **Pontua o que você dita** | "oi tudo bem chego às sete pode ser" vira *"Oi, tudo bem? Chego às sete, pode ser?"* antes de enviar. |
 | 🪄 | **Assistente de configuração** | Uma página no navegador explica, testa e configura tudo. Nada de editar arquivo. |
 | 🗨️ | **Entende gírias** | Abreviações de chat (vc, blz, pfv, kkkk…) são lidas por extenso. |
@@ -155,6 +157,8 @@ A página tem céu animado, uma esfera que reage à voz, cartões com os último
 | **"Responda a Ana"** / **"Responda a Ana com áudio"** | Responde por texto ditado ou gravando a sua voz. |
 | **"Mande um áudio para a Ana"** | Grava e envia um áudio de voz. Termina sozinho depois de 3 s de silêncio. |
 | **"Abra o link"** / **"Abra o link que a Ana mandou"** | Abre o link no navegador do PC. |
+| **"O que a Ana falou sobre o carro?"** / **"Procura nas mensagens o endereço da festa"** | Procura nas mensagens dos últimos 7 dias e responde falando (quem falou e quando). |
+| **"Me lembra disso às três"** / **"…daqui a meia hora"** | Lembrete com a última mensagem avisada: de quem era e o que dizia. |
 | **"Que horas são?"** | Diz a hora e a data. |
 | **"Vai chover hoje?"** / **"Como está o tempo?"** | Temperatura de agora e previsão do dia. |
 | **"Lê meus e-mails de hoje"** | Resumo dos e-mails de pessoas que chegaram hoje (sem propaganda). |
@@ -294,6 +298,7 @@ vigia/
     ├── comandos.js         # comandos de voz, lembretes, bom dia
     ├── girias.js           # abreviações e gírias lidas por extenso
     ├── ligar-pc.js         # monta o instalador do "Ligar o PC" para o notebook
+    ├── historico.js        # perguntas sobre as mensagens dos últimos dias
     ├── pontuar.js          # pontuação do texto ditado (vírgula, ponto, interrogação)
     ├── configurar.js       # servidor do assistente de configuração (só 127.0.0.1)
     ├── configurar.html     # a página do assistente

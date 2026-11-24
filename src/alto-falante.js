@@ -135,7 +135,7 @@ export function iniciarAltoFalante() {
     if (url.pathname === '/comando' && req.method === 'POST') {
       const c = url.searchParams.get('c'), t = (url.searchParams.get('t') || '').slice(0, 300);
       res.writeHead(204).end();
-      if (['ate-amanha', 'cancela', 'responda', 'enviar', 'enviar-audio', 'lembrete', 'leia', 'ouca-audio', 'leia-de', 'ouca-de', 'responda-de', 'hora', 'clima', 'emails', 'repete', 'abrir-link', 'silenciar', 'dessilenciar'].includes(c)) {
+      if (['ate-amanha', 'cancela', 'responda', 'enviar', 'enviar-audio', 'lembrete', 'leia', 'ouca-audio', 'leia-de', 'ouca-de', 'responda-de', 'hora', 'clima', 'emails', 'repete', 'abrir-link', 'silenciar', 'dessilenciar', 'perguntar'].includes(c)) {
         log(`comando de voz: ${c} ("${t}")`);
         for (const fn of ouvintesComando) Promise.resolve(fn(c, t)).catch((e) => log(`comando ${c}: ${e.message}`));
       }
