@@ -53,6 +53,9 @@ export const config = {
   altoFalantePorta: num(e.ALTO_FALANTE_PORTA, 8765),
   saudacaoNome: (e.SAUDACAO_NOME ?? '').trim(), // ex.: "Sr. João" → "Bom dia, Sr. João!"
   // Como a voz deve FALAR certas palavras (a tela não muda). Formato: Thalyta=Talíta;Outro=Jeito de falar
+  // Apelidos: o que o reconhecimento de voz entende no lugar de um nome → o nome do contato (ex.: amorzinho=Ana).
+  // Formato: apelido=Nome;outro=Nome. Vale para "envia/responda/leia/encaminha/silencia…" e perguntas.
+  apelidos: (e.APELIDOS ?? '').split(';').map((p) => p.split('=').map((s) => s.trim())).filter(([a, b]) => a && b),
   pronuncia: (e.PRONUNCIA ?? '').split(';').map((p) => p.split('=').map((s) => s.trim())).filter(([a, b]) => a && b),
   // Previsão do tempo no bom dia (padrão: São Paulo; troque pela sua cidade)
   climaCidade: (e.CLIMA_CIDADE || 'São Paulo').trim(),
@@ -90,3 +93,21 @@ export const config = {
 };
 
 export const emailAtivo = () => Boolean(config.email.usuario && config.email.senha);
+
+/** Troca os apelidos pelo nome do contato: "manda pro amorzinho" → "manda pro Ana" (palavra inteira, sem acento/maiúscula). */
+export function aplicarApelidos(texto) {
+  let t = String(texto || '');
+  const sem = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // os mais longos primeiro ("meu amor" antes de "amor")
+  for (const [apelido, nome] of [...config.apelidos].sort((a, b) => b[0].length - a[0].length)) {
+    const alvo = sem(apelido).split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}])${alvo}(?=$|[^\\p{L}\\p{N}])`, 'giu');
+    // compara sem acento, mas devolve o texto original com a troca
+    const base = [...t.normalize('NFC')].map((ch) => ch.normalize('NFD')[0]).join('').toLowerCase();
+    let saida = '', ult = 0, m;
+    t = t.normalize('NFC');
+    while ((m = re.exec(base))) { const ini = m.index + m[1].length; saida += t.slice(ult, ini) + nome; ult = ini + m[0].length - m[1].length; }
+    t = saida + t.slice(ult);
+  }
+  return t;
+}

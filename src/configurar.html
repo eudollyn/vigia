@@ -357,6 +357,9 @@ kbd{font:600 13px "Inter Tight";padding:2px 8px;border-radius:7px;background:var
       <h2>🔤 Pronúncia</h2>
       <p class="peq">Como a voz deve <b>falar</b> um nome (a tela continua igual). Escreva <kbd>Thalyta=Talíta</kbd>.</p>
       <div class="chips" data-chips="PRONUNCIA" data-sep=";"><input type="text" placeholder="Nome=Jeito de falar" aria-label="Adicionar pronúncia"></div>
+      <h2>🗣️ Apelidos</h2>
+      <p class="peq">O reconhecimento de voz às vezes entende outra palavra no lugar de um nome ("amorzinho" em vez de "Ana"). Ensine aqui: <kbd>amorzinho=Ana</kbd>. Vale para "envia mensagem para…", "responda…", "encaminha…" e perguntas.</p>
+      <div class="chips" data-chips="APELIDOS" data-sep=";"><input type="text" placeholder="o que ele entende=Nome do contato" aria-label="Adicionar apelido"></div>
       <div class="linha" style="margin-top:12px"><input type="text" id="testePron" placeholder="Digite um nome para ouvir" style="max-width:320px"><button class="btn peq" id="ouvirPron">▶ Ouvir</button></div>
     </section>
 
@@ -689,6 +692,7 @@ function lerChips(c) { return $$('span', c).map((s) => s.dataset.v); }
 function addChip(c, v) {
   v = v.trim(); if (!v || lerChips(c).includes(v)) return;
   if (c.dataset.chips === 'PRONUNCIA' && !/^[^=]+=[^=]+$/.test(v)) { toast('Use o formato Nome=Jeito de falar', true); return; }
+  if (c.dataset.chips === 'APELIDOS' && !/^[^=]+=[^=]+$/.test(v)) { toast('Use o formato apelido=Nome do contato', true); return; }
   const s = document.createElement('span'); s.dataset.v = v; s.innerHTML = `${esc(v)}<button type="button" aria-label="Remover ${esc(v)}">×</button>`;
   s.querySelector('button').onclick = () => s.remove(); c.insertBefore(s, $('input', c));
 }

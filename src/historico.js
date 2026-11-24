@@ -3,7 +3,7 @@
 // pessoa ou grupo citado na pergunta e pede ao Gemini uma resposta curta, para ser falada.
 import fs from 'node:fs';
 import path from 'node:path';
-import { config, DADOS } from './config.js';
+import { config, DADOS, aplicarApelidos } from './config.js';
 
 const HIST = path.join(DADOS, 'historico.jsonl');
 const DIAS = 7;
@@ -31,7 +31,7 @@ function lerHistorico() {
 // Quem foi citado na pergunta? Compara as palavras da pergunta com os nomes (remetentes e grupos) do histórico.
 // "aninha" acha "Ana"; "grupo da AMS" acha o grupo.
 function citados(pergunta, itens) {
-  const palavras = norm(pergunta).split(' ').filter((w) => w.length >= 3);
+  const palavras = norm(aplicarApelidos(pergunta)).split(' ').filter((w) => w.length >= 3); // "amorzinho" → Ana
   const nomes = new Set();
   for (const x of itens) { if (x.de) nomes.add(semEmoji(x.de)); if (x.grupo) nomes.add(semEmoji(x.grupo)); }
   const achados = [];

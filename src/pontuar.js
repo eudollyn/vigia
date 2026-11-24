@@ -81,6 +81,7 @@ async function pontuarGemini(texto, modelo, espera) {
         'Devolva a MESMA mensagem com a pontuação certa (vírgulas, pontos, interrogação, exclamação) e letras maiúsculas onde precisa. ' +
         'Ajuste também maiúsculas erradas no meio da frase. Mantenha as palavras, as gírias e o jeito de falar da pessoa: ' +
         'só corrija uma palavra se ela for claramente um erro do reconhecimento de voz (ex.: "chat de PT" → "ChatGPT"). ' +
+        'O reconhecimento confunde "cem" (100) com "sem": quando for claramente uma quantidade, escreva o número (ex.: "sem folhas" num pedido → "100 folhas"). ' +
         'NÃO resuma, NÃO reescreva, NÃO acrescente nem tire frases. Responda só com a mensagem.' }] },
       contents: [{ role: 'user', parts: [{ text: texto }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 1000 },
@@ -100,9 +101,18 @@ async function pontuarGemini(texto, modelo, espera) {
 
 export let ultimoErro = ''; // para o log: por que caiu na regra local
 
+// "cem" e "sem" soam igual: o reconhecimento escreve "sem folhas" quando a pessoa disse "100 folhas".
+// Quando "sem" vem antes de uma unidade/quantidade ou de "mil", "reais", "por cento", vira 100.
+const UNIDADES = 'folhas?|unidades?|pe[cç]as?|caixas?|pacotes?|rolos?|resmas?|parafusos?|porcas?|arruelas?|placas?|chapas?|barras?|tubos?|sacos?|kits?|pares?|itens|item|c[oó]pias?|p[aá]ginas?|metros?|cent[ií]metros?|mil[ií]metros?|quil[oô]metros?|km|cm|mm|m|quilos?|kg|gramas?|g|litros?|ml|toneladas?|reais|real|d[oó]lares?|euros?|mil|milh[oõ]es|por cento|%|graus?|horas?|minutos?|dias?|metros quadrados|m2|m²';
+const CEM = new RegExp(`(^|[^\\p{L}\\p{N}])[Ss]em\\s+(?=(?:${UNIDADES})(?![\\p{L}]))`, 'gu');
+const CEM_E = /(^|[^\p{L}\p{N}])[Ss]em e (\d{1,2})(?!\d)/gu; // "sem e 20 folhas" → "120 folhas"
+export function corrigirCem(t) {
+  return String(t || '').replace(CEM_E, (m, a, n) => `${a}${100 + Number(n)}`).replace(CEM, '$1100 ');
+}
+
 /** Texto ditado (pode ter marcas de pausa " | ") → texto pontuado, sem as marcas. */
 export async function pontuar(texto) {
-  const t = String(texto || '').replace(/\s+/g, ' ').trim();
+  const t = corrigirCem(String(texto || '').replace(/\s+/g, ' ').trim());
   ultimoErro = '';
   if (!t) return t;
   if (/[.,!?;:]/.test(t)) return t.replace(/\s*\|\s*/g, ' ').trim(); // já veio pontuado (transcrição do Gemini)

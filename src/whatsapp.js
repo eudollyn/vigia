@@ -11,7 +11,7 @@ import qrTerminal from 'qrcode-terminal';
 import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { config, DADOS } from './config.js';
+import { config, DADOS, aplicarApelidos } from './config.js';
 import { log, notificar, registrarEnvio, registrarEnvioAudio, registrarEncaminhar, marcarConversa, conversaAtiva } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
@@ -219,7 +219,7 @@ export function nomesConhecidos() {
 }
 /** → { tipo: 'ok', destino } | { tipo: 'varios', opcoes: [destino...] } | { tipo: 'nenhum' } */
 export function buscarDestino(nomeFalado) {
-  const q = norm(nomeFalado).replace(/^(o|a|os|as|grupo|grupo do|grupo da|contato)\s+/, '');
+  const q = norm(aplicarApelidos(nomeFalado)).replace(/^(o|a|os|as|grupo|grupo do|grupo da|contato)\s+/, '');
   if (!q) return { tipo: 'nenhum' };
   const porNome = new Map(); // um destino por nome (o mesmo contato pode ter id de telefone e @lid)
   for (const [jid, c] of Object.entries(contatos)) {

@@ -55,7 +55,7 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 | 🧵 | **Sem metralhadora de avisos** | Mensagens picadas viram um aviso só. Depois de avisar alguém, espera 2 min (menos se você estiver conversando com a pessoa) e diz *"Ana mandou mais 6 mensagens"*. Quer silêncio? *"Silencia a Ana por duas horas"*. |
 | 🔎 | **Pergunte às suas mensagens** | *"O que a Ana falou sobre o carro?"*, *"qual o valor que o Bruno passou?"*: procura no WhatsApp e no e-mail dos últimos 7 dias e responde falando. |
 | 📌 | **"Me lembra disso"** | Logo depois de um aviso: *"me lembra disso às três"*. O lembrete guarda de quem era a mensagem e o que ela dizia. |
-| ✍️ | **Pontua o que você dita** | "oi tudo bem chego às sete pode ser" vira *"Oi, tudo bem? Chego às sete, pode ser?"* antes de enviar. |
+| ✍️ | **Pontua o que você dita** | "oi tudo bem chego às sete pode ser" vira *"Oi, tudo bem? Chego às sete, pode ser?"* antes de enviar. Também corrige "sem folhas" → *"100 folhas"* (cem/sem). |
 | 🪄 | **Assistente de configuração** | Uma página no navegador explica, testa e configura tudo. Nada de editar arquivo. |
 | 🗨️ | **Entende gírias** | Abreviações de chat (vc, blz, pfv, kkkk…) são lidas por extenso. |
 
@@ -207,6 +207,7 @@ O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 | `AGRUPAR_SEGUNDOS` | Junta mensagens picadas até a pessoa parar de mandar | `20` |
 | `PAUSA_MESMA_PESSOA_MIN` | Minutos sem falar da mesma pessoa depois de um aviso | `5` |
 | `PRIVADOS` | Contatos cujo conteúdo não é lido em voz alta | `Mãe,Amor` |
+| `APELIDOS` | O que o reconhecimento de voz entende no lugar de um nome ("amorzinho" em vez de "Ana") | `amorzinho=Ana` |
 | `PRONUNCIA` | Como a voz fala certos nomes (só na fala) | `Thalyta=Talíta;Joao=João` |
 | `ABRIR_PAGINA` | Abre a página do Vigia neste PC ao ligar (0 = você usa em outro aparelho) | `1` |
 | `SAIDA_VOZ` | Onde a voz toca (`notebook` = na página, onde ela estiver) | `notebook` · `pc` · `ambos` |
