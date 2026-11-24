@@ -79,7 +79,7 @@ export async function ouvirRemoto(opcoes = {}) {
   }
   return r;
 }
-function ouvirRemoto0({ esperaMs = 7000, silencioMs = 1400, maxMs = 20000, gravar = false } = {}) {
+function ouvirRemoto0({ esperaMs = 7000, silencioMs = 1400, maxMs = 20000, gravar = false, pausas = false } = {}) {
   const c = [...clientes].reverse().find((x) => x.mic);
   if (!c) return Promise.resolve(null);
   const id = crypto.randomBytes(6).toString('hex');
@@ -100,7 +100,7 @@ function ouvirRemoto0({ esperaMs = 7000, silencioMs = 1400, maxMs = 20000, grava
     };
     const t = setTimeout(() => fim(null), esperaMs + maxMs + 8000);
     esperando.set(id, fim);
-    c.res.write(`event: ouvir\ndata: ${JSON.stringify({ id, esperaMs, silencioMs, maxMs, gravar })}\n\n`);
+    c.res.write(`event: ouvir\ndata: ${JSON.stringify({ id, esperaMs, silencioMs, maxMs, gravar, pausas })}\n\n`);
   });
 }
 

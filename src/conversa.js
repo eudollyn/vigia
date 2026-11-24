@@ -39,6 +39,8 @@ const semAcento = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 let bipe;
 async function ouvirTexto(opcoes, rotulo, dica = []) {
   if (!bipe) bipe = criarBipe();
+  // no ditado de mensagem, a página marca onde você pausou (" | "): as pausas viram vírgula/ponto em pontuar.js
+  if (rotulo === 'ditado') opcoes = { ...opcoes, pausas: true };
   log(`voz: escutando (${rotulo})…`);
   const remoto = await micRemotoAtivo();       // no notebook, a própria página toca o bipe
   const gravando = ouvir(opcoes);              // abre o microfone já
@@ -213,7 +215,9 @@ export async function enviarAudioPorVoz(destino, { dizer, enviarAudio }) {
 /** Pergunta em voz alta e devolve o que a pessoa respondeu (texto transcrito, ou '' se ninguém falou). */
 export async function perguntar(dizer, pergunta, rotulo = 'pergunta', dica = []) {
   await dizer(pergunta);
-  return ouvirTexto({ esperaMs: 8000, silencioMs: 1300, maxMs: 15000 }, rotulo, dica);
+  // ditar uma mensagem leva mais tempo e tem pausas no meio: espera mais (igual ao "responda")
+  const tempos = rotulo === 'ditado' ? { esperaMs: 8000, silencioMs: 1600, maxMs: 45000 } : { esperaMs: 8000, silencioMs: 1300, maxMs: 15000 };
+  return ouvirTexto(tempos, rotulo, dica);
 }
 
 /**

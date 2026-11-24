@@ -431,7 +431,7 @@ async function ouvirComChrome(p){
   const r = new SR(); r.lang='pt-BR'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
   await new Promise(res => {
     const fim = () => { if (acabou) return; acabou = true; clearInterval(relogio); try{ r.abort(); }catch(e){}
-      const texto = (finais.join(' ') + ' ' + parcial).replace(/\s+/g,' ').trim();
+      const texto = (finais.join(p.pausas ? ' | ' : ' ') + (p.pausas && parcial.trim() && finais.length ? ' | ' : ' ') + parcial).replace(/\s+/g,' ').trim();
       anima.alvo = 0; estado(texto ? '“'+texto+'”' : 'Esperando mensagens…', texto ? 'cmd' : ''); chip('cMic','ok','Microfone');
       setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },4000);
       enviarTexto(p.id, texto); res(); };
