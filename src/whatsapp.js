@@ -214,6 +214,20 @@ function pontuar(q, nome) {
   return 0;
 }
 /** Nomes conhecidos (para ajudar a transcrição a acertar a grafia). */
+/** Quantas das primeiras palavras formam o nome de um contato/grupo? ("grupo gato cachorro e elefante que hoje…" → 5).
+ *  Escolhe o pedaço com a melhor nota; empate → o mais longo. null se nenhum pedaço parecer um nome. */
+export function tamanhoDoNome(palavras) {
+  let melhor = null;
+  for (let n = 1; n <= Math.min(7, palavras.length - 1); n++) {
+    const q = norm(aplicarApelidos(palavras.slice(0, n).join(' '))).replace(/^(o|a|os|as|grupo|grupo do|grupo da|contato)\s+/, '');
+    if (!q) continue;
+    let nota = 0;
+    for (const c of Object.values(contatos)) if (c.name) nota = Math.max(nota, pontuar(q, norm(c.name)));
+    for (const g of Object.values(gruposTodos)) nota = Math.max(nota, pontuar(q, norm(g)));
+    if (nota >= 55 && (!melhor || nota >= melhor.nota)) melhor = { n, nota };
+  }
+  return melhor ? melhor.n : null;
+}
 export function nomesConhecidos() {
   return [...new Set([...Object.values(contatos).map((c) => c.name), ...Object.values(gruposTodos)].filter(Boolean))];
 }

@@ -457,6 +457,24 @@ export async function encaminharFluxo(t, itemDoAviso) {
   } catch (e) { log(`encaminhar: falhou (${e.message})`); return dizer('Não consegui encaminhar agora. Tenta de novo daqui a pouco.'); }
 }
 
+// "Fala pro Aninha responder logo" → manda "Responde logo." (com a confirmação e a edição de sempre)
+async function darRecado(t) {
+  const r = await import('./recado.js');
+  const e = r.entenderRecado(t);
+  if (!e) return dizer('Não entendi para quem é o recado. Fala, por exemplo: fala pro Ana responder logo.');
+  // o nome pode ter várias palavras ("grupo Gato Cachorro e Elefante"): escolhe o pedaço que bate com um contato
+  const { tamanhoDoNome } = await import('./whatsapp.js');
+  const n = tamanhoDoNome(e.partes) || e.qtdNome;
+  const { nome, recado } = r.separar(e.partes, n);
+  if (!recado) return dizer('Qual é o recado?');
+  const destino = await escolherDestino(nome);
+  if (!destino) return;
+  const texto = await r.converterRecado(recado, limparNome(destino.de));
+  log(`recado para ${destino.de}: "${recado}" → "${texto}"`);
+  const { enviarMensagemPorVoz } = await import('./conversa.js');
+  return enviarMensagemPorVoz(destino, texto, { dizer, enviar: enviarPeloWhatsApp() });
+}
+
 // "O que o Ana falou sobre o carro?": procura nas mensagens dos últimos 7 dias e responde falando
 async function perguntarAoHistorico(t) {
   const { perguntarHistorico } = await import('./historico.js');
@@ -535,6 +553,7 @@ export function iniciarComandos(af) {
     if (c === 'repete') return repetir();
     if (c === 'abrir-link') return abrirUltimoLink(t);
     if (c === 'perguntar') return perguntarAoHistorico(t);
+    if (c === 'recado' && config.responderVoz) return umaConversa('recado', () => naFila(() => darRecado(t)));
     if (c === 'encaminhar' && config.responderVoz) return umaConversa('encaminhar', () => naFila(() => encaminharFluxo(t)));
     if (c === 'silenciar') return silenciarPessoa(t);
     if (c === 'dessilenciar') return voltarAvisar(t);

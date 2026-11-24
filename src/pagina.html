@@ -552,6 +552,8 @@ function iniciarComandos(){
     else if(/^\W*(repete|repita|repetir|fala de novo|diz de novo|fala outra vez|o que voce (disse|falou)|como e que e)(\s+(por favor|ai|vigia))?\W*$/.test(s)) c='repete';
     else if(/^\W*(envia|envie|enviar|manda|mande|mandar|grava|grave|gravar)\b.{0,12}\baudio\b/.test(s)) c='enviar-audio';
     else if(/^\W*(envia|envie|enviar|manda|mande|mandar)\b.*\bmensage/.test(s)) c='enviar';
+    // recado: "fala pra Aninha responder logo", "avisa o Bruno que eu vou atrasar", "pede pra Bia me ligar"
+    else if(/^\W*(fala|fale|diz|diga|avisa|avise|pede|peca|manda|mande)\s+(pro|pra|para|pros|pras|ao|a|o)\s+(?!que\b|isso\b|de novo\b)\S+\s+\S/.test(s)) c='recado';
     else if(/^\W*(me\s+)?(lembra|lembre|lembrar|cria um lembrete|criar lembrete|lembrete)\b/.test(s)) c='lembrete';
     // "até amanhã" só como a FRASE INTEIRA (com no máximo "tchau/valeu/boa noite" antes e "Vigia" depois):
     // "vamos conversar até amanhã" desligou o PC por engano
