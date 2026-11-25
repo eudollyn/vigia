@@ -151,7 +151,10 @@ export async function aposAviso(item, { dizer, enviar }) {
   } else {
     log(`voz: lendo a mensagem de ${item.de}`);
     const { textoParaLer } = await import('./avisos.js');
-    await dizer(textoParaLer(item));
+    if (item.canal === 'email' && /\b(inteiro|completo|todo|tudo|integra)\b/.test(p)) {
+      const { corpoDoEmail } = await import('./comandos.js');
+      await dizer(`${item.assunto ? `Assunto: ${item.assunto}. ` : ''}${corpoDoEmail(item.texto || item.textoOriginal) || textoParaLer(item)}`);
+    } else await dizer(textoParaLer(item) + (item.canal === 'email' ? ' Se quiser o texto todo, diga leia o e-mail inteiro.' : ''));
   }
   // depois de ler: ainda dá para pedir "ouça o áudio" (se era áudio) e/ou "responda"
   const ehAudio = /^\[(enviou|mandou) um áudio/.test(String(item.texto || ''));

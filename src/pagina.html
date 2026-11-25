@@ -571,6 +571,8 @@ function iniciarComandos(){
     const curta = s.split(/\s+/).filter(Boolean).length <= 4;
     if(CANCELAR.test(s)) { c='cancela'; pararTudo(); } // "cancelar" em QUALQUER frase: para tudo na hora
     else if(/^\W*(pode\s+)?(abra|abre|abrir|abri)\s+(o\s+|os\s+)?(ultimo\s+)?links?\b/.test(s)) c='abrir-link'; // "abra o link (da Ana)"
+    // e-mail a qualquer momento: "leia o e-mail", "lê esse e-mail", "leia o e-mail da Ana", "leia o e-mail inteiro", "quem mandou o último e-mail?"
+    else if(/^\W*(pode\s+)?(me\s+)?(le|leia|ler|lea|lia|abre|abra|mostra|fala)\s+(pra mim\s+|para mim\s+)?((o|esse|este|aquele|a)\s+)?(meu\s+)?(ultimo\s+|novo\s+)?e-?\s?mail\b|^\W*o que (diz|dizia|fala|falou) (o|esse|aquele) (ultimo )?e-?\s?mail\b|^\W*(de )?quem (me )?(mandou|enviou|e|era) (o |esse )?(ultimo )?e-?\s?mail\b/.test(s)) c='leia-email';
     // "silencia a Ana (por 2 horas)" / "volta a avisar a Ana"
     else if(/^\W*(pode\s+)?(volta|voltar|volte)\s+a\s+(avisar|falar)\s+\S|^\W*(tira|tirar|tire)\s+o\s+silencio\s+\S|^\W*(dessilencia|dessilenciar|desmuta|desmutar)\s+\S/.test(s)) c='dessilenciar';
     else if(/^\W*(pode\s+)?(silencia|silencie|silenciar|pausa|pause|pausar|muta|mute|mutar)\s+\S/.test(s)) c='silenciar';
@@ -597,7 +599,9 @@ function iniciarComandos(){
     else if(/^\W*(pode\s+)?(leia|le|ler)\b.{0,30}\b(d[oa]s?|de)\s+\S/.test(s) || /^\W*(leia|le|ler)\s+o que\b/.test(s)) c='leia-de';
     else if(/^\W*(responda|responde|responder)\s+\S/.test(s)) c='responda-de';
     else if(/^\W*(ouca|ouve|ouvir|escuta|escute|escutar|toca|toque|tocar)\b.{0,25}\baudio\b/.test(s)) c='ouca-audio';
-    else if(/^\W*(leia|le|ler|pode ler|le pra mim|leia pra mim)( a)?( ultima)?( mensagem)?\W*$/.test(s)) c='leia';
+    // "leia", "lê aí", "leia pra mim", "leia essa mensagem", "pode ler por favor", "o que diz?"
+    else if(/^\W*(pode\s+)?(me\s+)?(leia|le|ler|lea|lia)(\s+(pra mim|para mim|ai|isso|essa|esta|ela|ele|a|o|ultima|ultimo|mensagem|recado|por favor|vigia|de novo|agora))*\W*$/.test(s)
+         || /^\W*o que (diz|dizia|ela disse|ele disse|disse|ela falou|ele falou|ela mandou|ele mandou)\W*$/.test(s)) c='leia';
     if(c){ estado('“'+t+'”','cmd'); setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },4000);
       fetch('/comando?k='+k+'&c='+c+'&t='+encodeURIComponent(t),{method:'POST'}).catch(()=>{}); } } };
   chip('cCmd','ok','Comandos'); aplicarMusica(); ligarRec();

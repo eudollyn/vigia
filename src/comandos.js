@@ -234,6 +234,74 @@ async function lerUltimaDe(t) {
   return naFila(() => dizer(`${c.grupo ? `No grupo ${quem}` : `Última mensagem de ${quem}`}, às ${hora}. ${textoParaLer(item)}`));
 }
 
+// ---------- e-mail por voz ----------
+// "leia o e-mail", "lê esse e-mail", "o que diz o e-mail", "leia o e-mail da Ana", "leia o e-mail inteiro",
+// "quem mandou o último e-mail?". Vale a qualquer momento, não só na janela logo depois do aviso.
+function emailsDoHistorico(dias = 7) {
+  let linhas = [];
+  try {
+    const fd = fs.openSync(HIST, 'r'); const tam = fs.fstatSync(fd).size; const ler = Math.min(tam, 3_000_000);
+    const buf = Buffer.alloc(ler); fs.readSync(fd, buf, 0, ler, tam - ler); fs.closeSync(fd);
+    linhas = buf.toString('utf8').split('\n');
+  } catch { return []; }
+  const limite = Date.now() - dias * 86_400_000;
+  const r = [];
+  for (const l of linhas) {
+    let x; try { x = JSON.parse(l); } catch { continue; }
+    if (x.canal === 'email' && x.prioridade !== 'silencio' && Date.parse(x.quando) >= limite) r.push(x);
+  }
+  return r;
+}
+
+// Texto completo do e-mail, sem assinatura, links, imagens e a conversa citada abaixo
+export function corpoDoEmail(texto) {
+  let s = String(texto || '').replace(/\r/g, '');
+  const corte = s.search(/\n\s*(atenciosamente|att\.?|abra[cç]os|obrigad[oa],?\s*$|--\s*$|enviado do meu|de:\s|from:\s|em .{5,60} escreveu:|-----\s*original)/im);
+  if (corte > 40) s = s.slice(0, corte);
+  s = s.replace(/\[cid:[^\]]*\]/g, '').replace(/<https?:[^>]*>/g, '').replace(/https?:\/\/\S+/g, '')
+    .replace(/\[[^\]]{0,60}\]/g, '').replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
+  return s.length > 1500 ? s.slice(0, 1500).replace(/\s+\S*$/, '') + '… O resto é longo, veja no e-mail.' : s;
+}
+
+export function entenderEmail(t) {
+  const s = tirarAcento(t).replace(/[.,!?;:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const inteiro = /\b(inteiro|completo|todo|tudo|na integra|por completo)\b/.test(s);
+  const quem = /\bquem\s+(mandou|enviou|me mandou)\b/.test(s);
+  const m = s.match(/\be-?\s?mails?\b(?:\s+(?:inteiro|completo|todo))?\s+(?:d[oa]s?|de|que (?:o|a)\s+)\s*(.+)$/);
+  let nome = m ? m[1].replace(/\b(inteiro|completo|todo|por favor|pra mim|para mim|mandou|enviou|me mandou)\b.*$/, '').trim() : '';
+  if (/^(hoje|ontem|agora|novo|ultimo)$/.test(nome)) nome = '';
+  return { nome, inteiro, quem };
+}
+
+async function lerEmail(t) {
+  const { ultimoAviso, textoParaLer } = await import('./avisos.js');
+  const { nome, inteiro, quem } = entenderEmail(t);
+  let item = null;
+  if (nome) {
+    const n = tirarAcento(nome);
+    item = emailsDoHistorico().reverse().find((x) => tirarAcento(`${x.de} ${x.endereco || ''}`).includes(n)
+      || n.split(' ').every((p) => p.length > 2 && tirarAcento(`${x.de} ${x.endereco || ''}`).includes(p)));
+    if (!item) return naFila(() => dizer(`Não achei e-mail recente de ${nome}.`));
+  } else {
+    // o último e-mail avisado (o histórico guarda o texto completo); se o aviso ainda está na memória, usa o nome falado dele
+    item = emailsDoHistorico(2).pop() || null;
+    const aviso = ultimoAviso();
+    if (item && aviso?.canal === 'email' && aviso.assunto === item.assunto) item = { ...item, de: aviso.de, fala: aviso.fala || item.fala };
+    if (!item) return naFila(() => dizer('Não chegou nenhum e-mail nos últimos dois dias.'));
+  }
+  const de = limparNome(item.de);
+  const hora = item.quando ? new Date(item.quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+  const quando = hora ? `, às ${hora}` : '';
+  log(`voz: lendo e-mail de ${de}${inteiro ? ' (inteiro)' : ''}`);
+  if (quem) return naFila(() => dizer(`O último e-mail foi de ${de}${quando}${item.assunto ? `, assunto: ${item.assunto}` : ''}. Diga leia o e-mail para ouvir.`));
+  if (inteiro) {
+    const corpo = corpoDoEmail(item.texto || item.textoOriginal);
+    return naFila(() => dizer(`E-mail de ${de}${quando}.${item.assunto ? ` Assunto: ${item.assunto}.` : ''} ${corpo || 'Ele não tem texto.'}`));
+  }
+  const resumo = item.fala || item.resumo ? textoParaLer(item) : `${item.assunto ? `Assunto: ${item.assunto}. ` : ''}${corpoDoEmail(item.texto).slice(0, 400)}`;
+  return naFila(() => dizer(`E-mail de ${de}${quando}. ${resumo} Se quiser o texto todo, diga leia o e-mail inteiro.`));
+}
+
 async function ouvirAudioDe(t) {
   const { nome } = entenderPedido(t);
   const c = await acharConversa(nome);
@@ -548,6 +616,7 @@ export function iniciarComandos(af) {
     if (c === 'lembrete') return novoLembrete(t);
     if (c === 'leia') return lerUltima();
     if (c === 'leia-de') return lerUltimaDe(t);
+    if (c === 'leia-email') return lerEmail(t);
     if (c === 'hora') return dizerHora();
     if (c === 'clima') return dizerClima();
     if (c === 'emails') return lerEmailsHoje();

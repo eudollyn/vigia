@@ -168,6 +168,7 @@ A página tem céu animado, uma esfera que reage à voz, cartões com os último
 | **"Que horas são?"** | Diz a hora e a data. |
 | **"Vai chover hoje?"** / **"Como está o tempo?"** | Temperatura de agora e previsão do dia. |
 | **"Lê meus e-mails de hoje"** | Resumo dos e-mails de pessoas que chegaram hoje (sem propaganda). |
+| **"Leia o e-mail"** / **"Leia o e-mail da Ana"** | Lê o último e-mail (ou o último daquela pessoa), a qualquer momento. **"Leia o e-mail inteiro"** lê o texto todo, sem assinatura e sem a conversa citada. **"Quem mandou o último e-mail?"** diz só de quem é. |
 | **"Silencia a Ana"** / **"…por duas horas"** / **"…o dia todo"** | Mensagens dela só na tela, sem voz (padrão: 1 hora). |
 | **"Volta a avisar a Ana"** | Tira o silêncio e diz quantas mensagens chegaram. |
 | **"Repete"** | Fala de novo a última coisa que disse. |
