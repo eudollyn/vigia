@@ -352,9 +352,33 @@ let gerPagina = 0, pararAtual = null;
 function pararTudo(){ gerPagina++; const f = pararAtual; pararAtual = null; try { f && f(); } catch(e) {} }
 const CANCELAR = /\bcancel(a|ar|e|ou|em)\b/;
 const semAcentoP = (t) => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+// Durante a fala ou um áudio, a escuta de comandos fica desligada (para não ouvir a própria voz),
+// mas uma escuta SÓ de "cancelar" continua ligada: falou "cancela", o som para na hora.
+let recCancel=null, cancelAtivo=false, querEscutaCancelar=false;
+function ligarEscutaCancelar(){
+  if(typeof SR==='undefined' || !SR || !micOk || musica) return;
+  querEscutaCancelar=true;
+  if(!recCancel){
+    recCancel=new SR(); recCancel.lang='pt-BR'; recCancel.continuous=true; recCancel.interimResults=true;
+    recCancel.onresult=e=>{ for(let i=e.resultIndex;i<e.results.length;i++){
+      if(!CANCELAR.test(semAcentoP(e.results[i][0].transcript))) continue;
+      querEscutaCancelar=false; try{ recCancel.abort(); }catch(er){}
+      pararTudo(); estado('Cancelado','cmd'); setTimeout(()=>{ if(anima.modo==='cmd') estado('Esperando mensagens…'); },2500);
+      fetch('/comando?k='+k+'&c=cancela&t='+encodeURIComponent('cancelar (durante a fala)'),{method:'POST'}).catch(()=>{});
+      return; } };
+    recCancel.onend=()=>{ cancelAtivo=false; avisarFimCancel.splice(0).forEach(f=>f()); if(querEscutaCancelar) setTimeout(tentarCancel,150); };
+    recCancel.onerror=()=>{ cancelAtivo=false; };
+  }
+  aguardarComandosPararem().then(tentarCancel);
+}
+function tentarCancel(){ if(!querEscutaCancelar||cancelAtivo||!recCancel) return; try{ recCancel.start(); cancelAtivo=true; }catch(e){ setTimeout(tentarCancel,200); } }
+let avisarFimCancel=[];
+function desligarEscutaCancelar(){ querEscutaCancelar=false; if(recCancel&&cancelAtivo){ try{ recCancel.abort(); }catch(e){} } }
+// antes de abrir o microfone para ouvir você, a escuta do "cancelar" precisa ter parado (o Chrome só deixa uma por vez)
+function aguardarCancelParar(){ return cancelAtivo ? new Promise(ok => { avisarFimCancel.push(ok); setTimeout(ok, 800); }) : Promise.resolve(); }
 function tocar(id){ const g = gerPagina; fila = fila.then(() => new Promise(async r => {
   if (g !== gerPagina) { fetch('/tocado/'+id+'?k='+k,{method:'POST'}).catch(()=>{}); return r(); }
-  pausar(); estado('Falando…','falando');
+  pausar(); estado('Falando…','falando'); ligarEscutaCancelar();
   if (musica) await plim();
   const a = new Audio('/audio/'+id+'?k='+k); a.crossOrigin='anonymous';
   let medir = null;
@@ -366,7 +390,7 @@ function tocar(id){ const g = gerPagina; fila = fila.then(() => new Promise(asyn
     medir = setInterval(()=>{ an.getByteTimeDomainData(buf); let s=0; for(const v of buf){const x=(v-128)/128; s+=x*x;} anima.alvo = Math.min(1, Math.sqrt(s/buf.length)*5); }, 50);
   } catch(e) {}
   const fim = () => { clearInterval(medir); anima.alvo = 0; estado('Esperando mensagens…'); fetch('/tocado/'+id+'?k='+k,{method:'POST'}).catch(()=>{}); retomar(); r(); };
-  let feito = false; const fim1 = () => { if (feito) return; feito = true; if (pararAtual === parar) pararAtual = null; fim(); };
+  let feito = false; const fim1 = () => { if (feito) return; feito = true; desligarEscutaCancelar(); if (pararAtual === parar) pararAtual = null; fim(); };
   const parar = () => { try { a.pause(); } catch(e) {} fim1(); };
   pararAtual = parar;
   a.onended = fim1; a.onerror = fim1; a.play().catch(fim1);
@@ -429,7 +453,7 @@ async function gravarRecado(p){
         gravador.onstop = () => { stream.getTracks().forEach(x=>x.stop()); anima.alvo = 0; chip('cMic','ok','Microfone'); estado('Cancelado','cmd'); };
         try { gravador.stop(); } catch(e) {} enviarTexto(p.id, 'cancelar'); res(); } };
     r.onend = () => { if (!acabou) setTimeout(tentar, 200); };
-    aguardarComandosPararem().then(tentar);
+    Promise.all([aguardarComandosPararem(), aguardarCancelParar()]).then(tentar);
   });
 }
 
@@ -476,7 +500,7 @@ async function ouvirComChrome(p){
     const tentar = () => { if (acabou) return; try { r.start(); } catch(e) { setTimeout(tentar, 250); } };
     r.onend = () => { if (!acabou) setTimeout(tentar, 200); }; // o Chrome às vezes encerra sozinho: retoma
     r.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { chip('cMic','mal','Microfone bloqueado'); fim(); } };
-    aguardarComandosPararem().then(tentar);
+    Promise.all([aguardarComandosPararem(), aguardarCancelParar()]).then(tentar);
   });
 }
 async function ouvirAgora(p){
@@ -516,7 +540,7 @@ function pausar(){ pausa++; try{ rec && rec.abort(); }catch(e){} }
 let avisarFimRec = [];
 function aguardarComandosPararem(){ return recAtivo ? new Promise(ok => { avisarFimRec.push(ok); setTimeout(ok, 1000); }) : Promise.resolve(); }
 function retomar(){ pausa=Math.max(0,pausa-1); if(!pausa) setTimeout(ligarRec,300); }
-function ligarRec(){ if(!rec||pausa||recAtivo||musica) return; try{ rec.start(); recAtivo=true; }catch(e){} }
+function ligarRec(){ if(!rec||pausa||recAtivo||musica) return; try{ rec.start(); recAtivo=true; }catch(e){ setTimeout(ligarRec, 400); } } // ocupado (a escuta do "cancelar" ainda fechando)? tenta de novo
 function aplicarMusica(){
   const b=$('bMusica'); b.classList.toggle('on', musica); b.firstChild.textContent = musica ? '🎵 Modo música: ligado' : '🎵 Modo música';
   if (!rec) return;
