@@ -196,6 +196,30 @@ O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 
 ---
 
+## 🤖 Conector do ChatGPT (opcional)
+
+Peça ao **ChatGPT** para enviar uma mensagem pelo seu WhatsApp ou e-mail, com arquivos anexados. Exemplo: você monta
+uma cotação com o ChatGPT e diz *"solicite a cotação via WhatsApp para (11) 9xxxx-xxxx com a ficha técnica"*.
+O Vigia envia **na hora** (você já leu o texto no ChatGPT) e **avisa por voz** que enviou.
+
+1. Crie uma conta grátis em [ngrok.com](https://dashboard.ngrok.com). Copie o **Authtoken** e o seu **domínio fixo** (menu *Domains*).
+2. Dê dois cliques em **CONECTAR-CHATGPT.bat** e cole os dois. Ele liga o conector, reinicia o Vigia e mostra o endereço
+   (também fica em `LINK-DO-CHATGPT.txt`).
+3. No ChatGPT: **chatgpt.com/plugins → Adicionar servidor MCP personalizado**, cole o endereço, autenticação **Sem autenticação**.
+4. Coloque os arquivos que podem ser anexados (PDF, imagens, Word, Excel; até 15 MB) na pasta **`arquivos-para-o-gpt`**.
+
+| Ferramenta | O que faz |
+|---|---|
+| `listar_arquivos` | Mostra os arquivos da pasta |
+| `pesquisar_contatos` | Procura contatos e grupos salvos pelo nome |
+| `enviar_whatsapp` | Envia texto + arquivos para um número (com DDD) ou contato salvo |
+| `enviar_email` | Envia e-mail com anexos pelo SMTP do seu provedor e guarda uma cópia em **Enviados** |
+
+> 🔑 O endereço tem um **código secreto**: quem tiver o link consegue enviar pelo seu WhatsApp e e-mail. Não compartilhe.
+> Sem o código, o Vigia responde "não encontrado". Limite de 30 envios por hora.
+
+---
+
 ## ⚙️ Configuração (`.env`)
 
 | Variável | Para quê | Exemplo |
@@ -216,6 +240,8 @@ O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 | `SAIDA_VOZ` | Onde a voz toca (`notebook` = na página, onde ela estiver) | `notebook` · `pc` · `ambos` |
 | `MICROFONE_ORIGEM` | De onde vem a sua voz (`notebook` = microfone da página) | `notebook` · `pc` |
 | `CLIMA_CIDADE` / `CLIMA_LAT` / `CLIMA_LON` | Previsão do bom dia | `Recife` / `-8.05` / `-34.9` |
+| `GPT` / `NGROK_TOKEN` / `NGROK_DOMINIO` | Conector do ChatGPT (o CONECTAR-CHATGPT.bat preenche) | `1` |
+| `SMTP_HOST` / `SMTP_PORTA` / `EMAIL_NOME` | Envio de e-mail pelo conector | `smtp.gmail.com` / `465` |
 
 ---
 
@@ -223,7 +249,7 @@ O registro fica em `%LOCALAPPDATA%\VigiaLigarPC\ligar-pc.log`.
 
 - **Suas senhas e chaves ficam só no `.env`**, que está no `.gitignore` e nunca é enviado.
 - **Login do WhatsApp, contatos e histórico** ficam em `dados/`, também fora do Git. Não compartilhe essa pasta.
-- **Nada é enviado sem confirmação falada.** O Vigia não responde nem encaminha nada sozinho.
+- **Nada é enviado sem confirmação falada.** O Vigia não responde nem encaminha nada sozinho. A única exceção é o **conector do ChatGPT** (desligado de fábrica): ele envia o que você pediu no ChatGPT e avisa por voz.
 - **O que vai para fora do seu PC:** o texto das mensagens e os áudios vão para o **Google Gemini** (resumo e transcrição). Os comandos de voz da página usam o **reconhecimento de voz do Chrome/Edge**, que também passa por servidores do Google (ou da Microsoft, no Edge). A previsão do tempo usa a **Open-Meteo** (só a cidade).
 - A página do Vigia só abre com a **chave secreta** do link.
 
@@ -293,6 +319,7 @@ vigia/
 ├── INSTALAR.bat            # instalador guiado
 ├── INICIAR.bat             # liga o Vigia
 ├── CONFIGURAR.bat          # abre o assistente de configuração no navegador
+├── CONECTAR-CHATGPT.bat    # liga o conector do ChatGPT (token do ngrok)
 ├── docs/                   # imagens do README
 ├── .env.example            # modelo de configuração
 ├── scripts/                # notificação, voz, inicialização com o Windows
@@ -301,6 +328,8 @@ vigia/
     ├── index.js            # ponto de entrada
     ├── whatsapp.js         # leitura, áudios, busca de contatos por som
     ├── email.js            # IMAP com IDLE
+    ├── enviar-email.js     # SMTP com anexos + cópia em Enviados (conector do ChatGPT)
+    ├── conector-gpt.js     # servidor MCP para o ChatGPT (túnel ngrok)
     ├── resumo.js           # resumo e prioridade (Gemini / Claude / simples)
     ├── avisos.js           # notificação, fila de voz, privacidade
     ├── conversa.js         # responder e enviar por voz, com confirmação

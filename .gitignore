@@ -9,3 +9,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+
+# Conector do ChatGPT: seus PDFs e o endereço secreto
+arquivos-para-o-gpt/
+LINK-DO-CHATGPT.txt

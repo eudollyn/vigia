@@ -70,6 +70,8 @@ if (config.whatsapp) { iniciarWhatsApp(aoChegar); ligados.push('WhatsApp'); }
 if (emailAtivo()) { iniciarEmail(aoChegar); ligados.push('e-mail'); }
 else log('E-mail desligado: preencha EMAIL_USUARIO e EMAIL_SENHA no .env para ativar.');
 iniciarResumoBaixa();
+// conector do ChatGPT (MCP): o GPT envia pelo WhatsApp/e-mail, com anexos da pasta arquivos-para-o-gpt
+if (config.gpt) import('./conector-gpt.js').then((m) => m.iniciarConectorGPT()).catch((e) => log(`ChatGPT: conector falhou (${e.message})`));
 if (config.saidaVoz !== 'pc') {
   const af = await import('./alto-falante.js');
   (await import('./comandos.js')).iniciarComandos(af);

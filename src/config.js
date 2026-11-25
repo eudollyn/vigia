@@ -36,7 +36,16 @@ export const config = {
     senha: e.EMAIL_SENHA || '',
     host: (e.IMAP_HOST || 'email-ssl.com.br').trim(),
     porta: num(e.IMAP_PORTA, 993),
+    // envio (pedido pelo ChatGPT): mesmo usuário e senha; na Locaweb o SMTP é o mesmo servidor, porta 465
+    smtpHost: (e.SMTP_HOST || e.IMAP_HOST || 'email-ssl.com.br').trim(),
+    smtpPorta: num(e.SMTP_PORTA, 465),
+    nomeRemetente: (e.EMAIL_NOME || '').trim(),
   },
+  // Conector do ChatGPT (MCP): GPT=1 liga (o CONECTAR-CHATGPT.bat liga sozinho); NGROK_TOKEN e NGROK_DOMINIO abrem o túnel para a internet
+  gpt: num(e.GPT, 0) === 1,
+  gptPorta: num(e.GPT_PORTA, 8766),
+  ngrokToken: (e.NGROK_TOKEN || '').trim(),
+  ngrokDominio: (e.NGROK_DOMINIO || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
   whatsapp: num(e.WHATSAPP, 1) === 1,
   voz: num(e.VOZ, 1) === 1,
   vozNome: (e.VOZ_NOME || 'Microsoft Maria Desktop').trim(),

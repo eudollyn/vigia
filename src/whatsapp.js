@@ -272,6 +272,61 @@ function guardarRecebida(jid, msg) {
     tRecebidas = setTimeout(() => { try { fs.writeFileSync(ARQ_RECEBIDAS, JSON.stringify(recebidas)); } catch {} }, 2000);
   } catch (e) { log(`WhatsApp: não guardei a mensagem original (${e.message})`); }
 }
+// ---------- envio pedido pelo ChatGPT (conector-gpt.js) ----------
+/** Contatos salvos e grupos que batem com o nome (até 8), com o número quando houver. */
+export function pesquisarContatos(nome) {
+  const q = norm(nome);
+  if (!q) return [];
+  const r = [];
+  for (const [jid, c] of Object.entries(contatos)) {
+    if (!c.name || !norm(c.name).includes(q)) continue;
+    const numero = jid.endsWith('@s.whatsapp.net') ? '+' + jid.split('@')[0] : null;
+    if (!r.some((x) => x.nome === c.name && (x.numero || !numero))) r.push({ nome: c.name, numero, tipo: 'contato' });
+  }
+  for (const [, nomeG] of Object.entries(gruposTodos)) if (norm(nomeG).includes(q)) r.push({ nome: nomeG, numero: null, tipo: 'grupo' });
+  return r.slice(0, 8);
+}
+
+/** Número de telefone (com ou sem +55, com espaços/traços) → jid conferido no WhatsApp, ou null. */
+export async function jidDoNumero(texto) {
+  let d = String(texto || '').replace(/\D/g, '');
+  if (d.length < 10) return null;
+  if (d.startsWith('0')) d = d.replace(/^0+/, '');
+  if (d.length === 10 || d.length === 11) d = '55' + d; // número brasileiro sem o código do país
+  if (!sockAtual) throw new Error('O WhatsApp do Vigia não está conectado agora.');
+  const tentativas = [d];
+  // celular brasileiro com/sem o 9 extra: o WhatsApp às vezes cadastra o número antigo
+  if (d.startsWith('55') && d.length === 13) tentativas.push(d.slice(0, 4) + d.slice(5));
+  if (d.startsWith('55') && d.length === 12) tentativas.push(d.slice(0, 4) + '9' + d.slice(4));
+  for (const n of tentativas) {
+    const [r] = await sockAtual.onWhatsApp(n).catch(() => []);
+    if (r?.exists) return jidNormalizedUser(r.jid);
+  }
+  return null;
+}
+
+/** Envia texto + arquivos (PDF etc.). destino = número ou nome salvo. → { para, numero } */
+export async function enviarComArquivos(destino, texto, arquivos = []) {
+  if (!sockAtual) throw new Error('O WhatsApp do Vigia não está conectado agora.');
+  let jid = null, para = null;
+  if (/\d{8,}/.test(String(destino).replace(/[\s().-]/g, ''))) {
+    jid = await jidDoNumero(destino);
+    if (!jid) throw new Error(`O número ${destino} não tem WhatsApp (ou está incompleto). Confira o DDD.`);
+    para = contatos[jid]?.name || '+' + jid.split('@')[0];
+  } else {
+    const r = buscarDestino(destino);
+    if (r.tipo === 'nenhum') throw new Error(`Não achei "${destino}" nos contatos salvos. Mande o número com DDD.`);
+    if (r.tipo === 'varios') throw new Error(`"${destino}" bate com mais de um contato: ${r.opcoes.map((o) => o.de).join(', ')}. Diga qual, ou mande o número.`);
+    jid = r.destino.jid; para = r.destino.de;
+  }
+  if (texto) guardarEnviada(await sockAtual.sendMessage(jid, { text: texto }));
+  for (const a of arquivos) {
+    guardarEnviada(await sockAtual.sendMessage(jid, { document: fs.readFileSync(a.caminho), mimetype: a.tipo, fileName: a.nome }));
+  }
+  marcarConversa(idsDoContato(jid));
+  return { para, numero: jid.endsWith('@s.whatsapp.net') ? '+' + jid.split('@')[0] : null };
+}
+
 /** ids de mensagens → os originais (na ordem); os que não existirem mais são ignorados. */
 export function mensagensOriginais(ids) {
   const out = [];
