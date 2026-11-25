@@ -16,7 +16,7 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=flat-square&logo=windows)
 ![Node](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?style=flat-square&logo=googlegemini&logoColor=white)
-![Licença](https://img.shields.io/badge/licen%C3%A7a-MIT-yellow?style=flat-square)
+![Licença](https://img.shields.io/badge/licen%C3%A7a-AGPL--3.0-blue?style=flat-square)
 ![Idioma](https://img.shields.io/badge/idioma-pt--BR-009c3b?style=flat-square)
 
 </div>
@@ -320,9 +320,32 @@ vigia/
 
 ---
 
+## 📜 Licença
+
+O Vigia é **software livre** sob a licença **[GNU AGPL-3.0](LICENSE)** (ou versão posterior).
+Copyright © 2026 [eudollyn](https://github.com/eudollyn).
+
+**Em resumo, você pode:**
+- ✅ usar o Vigia de graça, para você ou na sua empresa;
+- ✅ estudar o código, modificar e adaptar como quiser;
+- ✅ compartilhar cópias, com ou sem as suas modificações.
+
+**Desde que:**
+- 📌 **mantenha o crédito** ao autor original e a mesma licença;
+- 📌 se **distribuir** uma versão modificada, ou **oferecer como serviço** pela internet, **publique o código-fonte completo** dela, também sob a AGPL-3.0.
+
+**O que isso impede:** pegar o Vigia, fechar o código e vender (ou oferecer como serviço) como se fosse um produto próprio.
+
+💼 Quer usar o Vigia num produto **sem abrir o código**? Fale com o autor para uma **licença comercial**.
+
+> O texto acima é um resumo para facilitar. Vale o texto completo da licença no arquivo [LICENSE](LICENSE).
+> Versões publicadas antes de 25/11/2026 foram distribuídas sob a licença MIT.
+
+---
+
 <div align="center">
 
-Feito com ☕ no Brasil · Licença [MIT](LICENSE)
+Feito com ☕ no Brasil · Licença [AGPL-3.0](LICENSE)
 
 **Se o Vigia te ajudou, deixe uma ⭐ no repositório!**
 
