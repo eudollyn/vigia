@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Lembretes por voz: "me lembra às 3 de ligar pro cliente", "me lembra daqui a 20 minutos de tirar o bolo".
 // O Gemini transforma a frase em data/hora + texto; os lembretes ficam em dados/lembretes.json.
 import fs from 'node:fs';

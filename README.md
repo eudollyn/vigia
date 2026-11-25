@@ -331,7 +331,7 @@ Copyright © 2026 [eudollyn](https://github.com/eudollyn).
 - ✅ compartilhar cópias, com ou sem as suas modificações.
 
 **Desde que:**
-- 📌 **mantenha o crédito** ao autor original e a mesma licença;
+- 📌 **mantenha o crédito** ao autor original e a mesma licença: o rodapé *"Vigia · software livre AGPL-3.0 · github.com/eudollyn/vigia"* precisa continuar visível na tela (termo adicional da seção 7b, no arquivo [NOTICE](NOTICE));
 - 📌 se **distribuir** uma versão modificada, ou **oferecer como serviço** pela internet, **publique o código-fonte completo** dela, também sob a AGPL-3.0.
 
 **O que isso impede:** pegar o Vigia, fechar o código e vender (ou oferecer como serviço) como se fosse um produto próprio.

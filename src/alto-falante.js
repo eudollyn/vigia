@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Alto-falante e microfone pela rede: o notebook abre uma página no navegador,
 // toca as falas do Vigia e, quando o Vigia pede, grava a sua voz e manda de volta.
 // Sem instalar nada no notebook. Protegido por uma chave na URL (só quem tem o link acessa).

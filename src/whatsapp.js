@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Leitor de WhatsApp (conexão tipo WhatsApp Web, via Baileys). SOMENTE LEITURA:
 // não envia mensagens, não marca como lido e não aparece "online".
 import makeWASocket, {

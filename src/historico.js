@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // "Perguntar ao histórico": "o que a Ana falou sobre o carro?", "qual era o valor que o Bruno passou?".
 // Procura nas mensagens dos últimos 7 dias (dados/historico.jsonl: WhatsApp e e-mail que chegaram), filtra pela
 // pessoa ou grupo citado na pergunta e pede ao Gemini uma resposta curta, para ser falada.

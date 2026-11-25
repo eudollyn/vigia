@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Pontuação do texto ditado. O reconhecimento de voz do Chrome devolve tudo sem vírgula, ponto ou interrogação
 // ("oi tudo bem chego às sete pode ser"). Antes de ler de volta e enviar, coloca a pontuação:
 // 0) a página marca onde você PAUSOU (" | "): cada pausa vira vírgula, ponto ou interrogação;

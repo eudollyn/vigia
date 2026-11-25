@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Assistente de configuração do Vigia: uma página no navegador que explica como ele funciona, testa a chave da IA,
 // o e-mail e as vozes, conecta o WhatsApp pelo QR code e grava o .env. Rode pelo CONFIGURAR.bat.
 // Só aceita conexões deste PC (127.0.0.1) e exige uma chave aleatória em cada pedido.

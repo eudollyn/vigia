@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Avisos: notificação do Windows, voz em fila (uma fala por vez) e histórico em disco.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';

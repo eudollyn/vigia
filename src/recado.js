@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // "Fala pro Aninha responder logo" → manda "Responde logo." para o Ana.
 // Entende o pedido (para quem + o recado) e transforma o recado indireto na mensagem direta, do jeito que se escreve no zap:
 //   "responder logo" → "Responde logo."   "me ligar quando chegar" → "Me liga quando chegar."

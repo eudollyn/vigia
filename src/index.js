@@ -62,7 +62,9 @@ function falaLiteral(msg) {
   return `${prefixo}"${t.replace(/"/g, '')}"`;
 }
 
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0 · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 log('Vigia iniciado.');
+console.log('Vigia · software livre (AGPL-3.0) · https://github.com/eudollyn/vigia');
 const ligados = [];
 if (config.whatsapp) { iniciarWhatsApp(aoChegar); ligados.push('WhatsApp'); }
 if (emailAtivo()) { iniciarEmail(aoChegar); ligados.push('e-mail'); }

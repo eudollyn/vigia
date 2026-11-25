@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Conversa por voz depois de um aviso do WhatsApp:
 //   (aviso lido) → microfone abre → "responda" → "O que você quer responder?" → ditado →
 //   "Vou responder: ... Posso enviar?" → "enviar" envia / qualquer outra coisa cancela.

@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Monta o instalador do "Ligar o PC" (roda no NOTEBOOK) já preenchido com os dados deste PC:
 // endereço físico (MAC) da placa de rede, IP, porta e o link do Vigia. Servido em /notebook/ligar-pc.zip?k=...
 import fs from 'node:fs';

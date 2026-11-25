@@ -1,3 +1,4 @@
+// Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026 (manter este crédito em cópias e versões modificadas)
 // Comandos de voz ditos no notebook (a página fica ouvindo) e o "bom dia" ao ligar.
 //   "até amanhã" → avisa e desliga o PC por completo em 15 s ("cancela" nesse tempo desfaz)
 //   "responda"   → responde a última mensagem de WhatsApp (dos últimos 15 min)
