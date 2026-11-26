@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🔮 Vigia
+<img src="assets/vigia-logo.png" alt="Vigia" width="128" height="128">
+
+# Vigia
 
 ### Seu assistente de voz para WhatsApp e e-mail, rodando no seu próprio PC
 
@@ -98,6 +100,7 @@ Para mudar a configuração depois, rode o **`CONFIGURAR.bat`**. Para ligar o Vi
 ## 🪄 Assistente de configuração
 
 <div align="center">
+
 <img src="docs/assistente-inicio.jpg" alt="Tela inicial do assistente de configuração do Vigia" width="820">
 </div>
 
@@ -115,6 +118,7 @@ Para mudar a configuração depois, rode o **`CONFIGURAR.bat`**. Para ligar o Vi
 | **Tudo pronto** | Confere o que está configurado e o que falta, liga "iniciar com o Windows" e liga o Vigia. |
 
 <div align="center">
+
 <img src="docs/assistente-simulacao.jpg" alt="Simulação de uma mensagem no assistente" width="820">
 </div>
 
@@ -405,6 +409,8 @@ Copyright © 2026 [eudollyn](https://github.com/eudollyn).
 ---
 
 <div align="center">
+
+$148$248">
 
 Feito com ☕ no Brasil · Licença [AGPL-3.0](LICENSE)
 

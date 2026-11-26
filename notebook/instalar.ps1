@@ -1,4 +1,4 @@
-# Instala o "Ligar o PC" neste notebook (só para o seu usuário, não precisa ser administrador).
+﻿# Instala o "Ligar o PC" neste notebook (só para o seu usuário, não precisa ser administrador).
 # Cria a tarefa "Vigia - Ligar o PC", que roda ao entrar no Windows, ao desbloquear e ao voltar da suspensão.
 $ErrorActionPreference = 'Stop'
 $origem  = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -6,6 +6,26 @@ $destino = Join-Path $env:LOCALAPPDATA 'VigiaLigarPC'
 New-Item -ItemType Directory -Force $destino | Out-Null
 Copy-Item (Join-Path $origem 'ligar-pc.ps1') $destino -Force
 Copy-Item (Join-Path $origem '*.wav') $destino -Force -ErrorAction SilentlyContinue  # falas com a voz do Vigia
+# Identidade visual: o ZIP distribuido pelo Vigia inclui o icone.
+$icoOrigem = Join-Path $origem 'vigia.ico'
+$icoDestino = Join-Path $destino 'vigia.ico'
+if (Test-Path -LiteralPath $icoOrigem) {
+  Copy-Item -LiteralPath $icoOrigem -Destination $icoDestino -Force
+  $linkVigia = '{{LINK}}'
+  if ($linkVigia -match '^https?://') {
+    $ws = New-Object -ComObject WScript.Shell
+    $pastas = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))
+    foreach ($pastaAtalho in $pastas) {
+      if (-not $pastaAtalho -or -not (Test-Path -LiteralPath $pastaAtalho)) { continue }
+      $atalho = $ws.CreateShortcut((Join-Path $pastaAtalho 'Vigia.lnk'))
+      $atalho.TargetPath = Join-Path $env:WINDIR 'explorer.exe'
+      $atalho.Arguments = '"' + $linkVigia + '"'
+      $atalho.IconLocation = $icoDestino + ',0'
+      $atalho.Description = 'Abrir Vigia'
+      $atalho.Save()
+    }
+  }
+}
 $script = Join-Path $destino 'ligar-pc.ps1'
 Unblock-File $script -ErrorAction SilentlyContinue
 

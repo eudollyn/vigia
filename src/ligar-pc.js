@@ -50,6 +50,8 @@ export async function montarLigarPc(chave) {
   for (const [nome, texto] of Object.entries(FALAS)) {
     try { const wav = await gerarAudioArquivo(texto); if (wav) fs.copyFileSync(wav, path.join(pasta, nome)); } catch {}
   }
+  const icone = new URL('../assets/vigia.ico', import.meta.url);
+  if (fs.existsSync(icone)) fs.copyFileSync(icone, path.join(pasta, 'vigia.ico'));
   const zip = path.join(DADOS, 'ligar-pc.zip');
   fs.rmSync(zip, { force: true });
   const r = spawnSync('powershell.exe', ['-NoProfile', '-Command', `Compress-Archive -Path '${pasta}\\*' -DestinationPath '${zip}' -Force`], { windowsHide: true });

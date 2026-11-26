@@ -1,4 +1,4 @@
-# Mostra uma notificação do Windows. Recebe título e texto em Base64 (UTF-8) para não quebrar acentos.
+﻿# Mostra uma notificação do Windows. Recebe título e texto em Base64 (UTF-8) para não quebrar acentos.
 param([string]$TituloB64, [string]$TextoB64, [string]$Urgente = '0')
 $ErrorActionPreference = 'Stop'
 $dec = { param($b) [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b)) }
@@ -11,9 +11,16 @@ $esc = { param($s) [Security.SecurityElement]::Escape($s) }
 
 $cenario = if ($Urgente -eq '1') { ' scenario="reminder"' } else { '' }
 $acoes   = if ($Urgente -eq '1') { '<actions><action content="OK" arguments="ok" activationType="system"/></actions>' } else { '' }
+$logoPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'assets\vigia-app.png'
+$logoXml = ''
+if (Test-Path -LiteralPath $logoPath) {
+  $logoUri = ([Uri]::new($logoPath)).AbsoluteUri
+  $logoXml = '<image placement="appLogoOverride" src="' + (& $esc $logoUri) + '"/>'
+}
 $xml = @"
 <toast$cenario>
   <visual><binding template="ToastGeneric">
+    $logoXml
     <text>$(& $esc $titulo)</text>
     <text>$(& $esc $texto)</text>
   </binding></visual>
