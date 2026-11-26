@@ -68,7 +68,7 @@ export async function talvezResponder(item, { dizer, enviar, pedido: jaPedido = 
   if (!config.responderVoz || !item.jid || !enviar) return;
 
   // 1) janela curta esperando "responda" (ou o "responda" já veio do comando de voz do notebook)
-  const pedido = jaPedido || await ouvirTexto({ esperaMs: config.janelaMs, silencioMs: 900, maxMs: 15000 }, 'responda?');
+  const pedido = jaPedido || await ouvirTexto({ esperaMs: config.janelaMs, silencioMs: 900, maxMs: 15000, automatico: true }, 'responda?');
   if (!pedido) return;
   if (jaPedido) await dizer(`Respondendo para ${item.grupo ? 'o grupo ' + item.grupo : item.de}.`);
   if (!PEDIU_RESPOSTA.test(semAcento(pedido))) { log(`voz: ouvi "${pedido}" (não era "responda")`); return; }
@@ -121,7 +121,7 @@ const PEDIU_LINK = /\b(abra|abre|abrir|abri)\b.{0,20}\blinks?\b|^\W*(pode\s+)?(a
  */
 export async function aposAviso(item, { dizer, enviar }) {
   const podeResponder = item.canal === 'whatsapp' && item.jid && enviar;
-  const pedido = await ouvirTexto({ esperaMs: config.janelaMs, silencioMs: 900, maxMs: 15000 }, 'leia/responda?');
+  const pedido = await ouvirTexto({ esperaMs: config.janelaMs, silencioMs: 900, maxMs: 15000, automatico: true }, 'leia/responda?');
   if (!pedido) { if (falhouTranscricao) await dizer(naoOuvi('Diga leia de novo.')); return; }
   const p = semAcento(pedido).toLowerCase();
   if (podeResponder && PEDIU_RESPOSTA.test(p)) return talvezResponder(item, { dizer, enviar, pedido });

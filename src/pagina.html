@@ -388,7 +388,7 @@ function desligarEscutaCancelar(){ querEscutaCancelar=false; if(recCancel&&cance
 function aguardarCancelParar(){ return cancelAtivo ? new Promise(ok => { avisarFimCancel.push(ok); setTimeout(ok, 800); }) : Promise.resolve(); }
 function tocar(id){ const g = gerPagina; fila = fila.then(() => new Promise(async r => {
   if (g !== gerPagina) { fetch('/tocado/'+id+'?k='+k,{method:'POST'}).catch(()=>{}); return r(); }
-  pausar(); estado('Falando…','falando'); ligarEscutaCancelar();
+  pausar(); estado('Falando…','falando'); if (!musica) ligarEscutaCancelar(); // modo música: o microfone não abre sozinho
   if (musica) await plim();
   const a = new Audio('/audio/'+id+'?k='+k); a.crossOrigin='anonymous';
   let medir = null;
@@ -414,7 +414,7 @@ function wav16(quadros, rate){ let total=0; for(const q of quadros) total+=q.len
   v.setUint32(24,16000,true);v.setUint32(28,32000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
   for(let i=0;i<n;i++){const x=Math.max(-1,Math.min(1,src[Math.floor(i*r)]));v.setInt16(44+i*2,x*32767,true);} return new Blob([buf],{type:'audio/wav'}); }
 function enviarFala(id, blob){ fetch('/fala/'+id+'?k='+k,{method:'POST',body:blob||new Blob([])}).catch(()=>{}); }
-function ouvir(p){ const g = gerPagina; fila = fila.then(async()=>{ if (g !== gerPagina) return enviarTexto(p.id, ''); pausar(); try { await (p.gravar ? gravarRecado(p) : SR && micOk ? ouvirComChrome(p) : ouvirAgora(p)); } finally { retomar(); } }); }
+function ouvir(p){ const g = gerPagina; fila = fila.then(async()=>{ if (g !== gerPagina || (musica && p.automatico)) return enviarTexto(p.id, ''); pausar(); try { await (p.gravar ? gravarRecado(p) : SR && micOk ? ouvirComChrome(p) : ouvirAgora(p)); } finally { retomar(); } }); }
 
 // "Mande um áudio para…": GRAVA a sua voz (MediaRecorder, Opus). O reconhecimento do Chrome roda junto só para
 // saber quando você terminou de falar (2 s sem palavras novas) e mostrar o texto na tela.
