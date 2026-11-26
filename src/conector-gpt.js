@@ -19,7 +19,15 @@ const ARQ_SEGREDO_LEITURA = path.join(DADOS, 'gpt-segredo-leitura.txt');
 const ARQ_LINK = path.join(RAIZ, 'LINK-DO-CHATGPT.txt');
 const TIPOS = { '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
   '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+  '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.tif': 'image/tiff', '.tiff': 'image/tiff', '.dwg': 'image/vnd.dwg', '.dxf': 'image/vnd.dxf', '.step': 'model/step', '.stp': 'model/step',
+  '.zip': 'application/zip', '.rar': 'application/vnd.rar', '.7z': 'application/x-7z-compressed', '.csv': 'text/csv', '.txt': 'text/plain',
+  '.odt': 'application/vnd.oasis.opendocument.text', '.ods': 'application/vnd.oasis.opendocument.spreadsheet', '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.igs': 'model/iges', '.iges': 'model/iges', '.stl': 'model/stl' };
+// Qualquer documento ou desenho técnico pode ir (MIME desconhecido = application/octet-stream), menos executáveis e scripts.
+const BLOQUEADOS = new Set(['.exe', '.bat', '.cmd', '.com', '.msi', '.ps1', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.scr', '.lnk', '.dll', '.reg', '.hta', '.jar', '.sh']);
+const permitido = (nome) => !nome.startsWith('.') && !BLOQUEADOS.has(path.extname(nome).toLowerCase());
+const tipoDe = (nome) => TIPOS[path.extname(nome).toLowerCase()] || 'application/octet-stream';
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 function segredo(arquivo, validar) {
@@ -51,10 +59,10 @@ function linkLeitura(base, chave) {
 export function listarArquivos() {
   fs.mkdirSync(PASTA_ARQUIVOS, { recursive: true });
   return fs.readdirSync(PASTA_ARQUIVOS, { withFileTypes: true })
-    .filter((d) => d.isFile() && TIPOS[path.extname(d.name).toLowerCase()])
+    .filter((d) => d.isFile() && permitido(d.name))
     .map((d) => {
       const caminho = path.join(PASTA_ARQUIVOS, d.name);
-      return { nome: d.name, tipo: TIPOS[path.extname(d.name).toLowerCase()], caminho, kb: Math.round(fs.statSync(caminho).size / 1024) };
+      return { nome: d.name, tipo: tipoDe(d.name), caminho, kb: Math.round(fs.statSync(caminho).size / 1024) };
     });
 }
 /** nomes pedidos ("ficha técnica", "ficha_tecnica.pdf") → arquivos da pasta. Erro claro se algum não existir. */
