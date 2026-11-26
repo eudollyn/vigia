@@ -388,7 +388,7 @@ function desligarEscutaCancelar(){ querEscutaCancelar=false; if(recCancel&&cance
 function aguardarCancelParar(){ return cancelAtivo ? new Promise(ok => { avisarFimCancel.push(ok); setTimeout(ok, 800); }) : Promise.resolve(); }
 function tocar(id){ const g = gerPagina; fila = fila.then(() => new Promise(async r => {
   if (g !== gerPagina) { fetch('/tocado/'+id+'?k='+k,{method:'POST'}).catch(()=>{}); return r(); }
-  pausar(); estado('Falando…','falando'); if (!musica) ligarEscutaCancelar(); // modo música: o microfone não abre sozinho
+  pausar(); estado('Falando…','falando'); ligarEscutaCancelar(); // o "cancela" vale sempre, inclusive no modo música
   if (musica) await plim();
   const a = new Audio('/audio/'+id+'?k='+k); a.crossOrigin='anonymous';
   let medir = null;
