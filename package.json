@@ -10,10 +10,11 @@
     "teste-aviso": "node src/teste-aviso.js",
     "teste-microfone": "node src/teste-microfone.js",
     "instalar-inicio": "powershell -ExecutionPolicy Bypass -File scripts/instalar-inicio.ps1",
-    "remover-inicio": "powershell -ExecutionPolicy Bypass -File scripts/instalar-inicio.ps1 -Remover"
+    "remover-inicio": "powershell -ExecutionPolicy Bypass -File scripts/instalar-inicio.ps1 -Remover",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@ngrok/ngrok": "1.5.1",

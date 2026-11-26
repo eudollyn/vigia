@@ -14,7 +14,7 @@ Você responde **falando**, e nada sai sem a sua confirmação.
 <br>
 
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=flat-square&logo=windows)
-![Node](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+![Node](https://img.shields.io/badge/Node.js-22.13%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
 ![Gemini](https://img.shields.io/badge/IA-Google%20Gemini-8E75B2?style=flat-square&logo=googlegemini&logoColor=white)
 ![Licença](https://img.shields.io/badge/licen%C3%A7a-AGPL--3.0-blue?style=flat-square)
 ![Idioma](https://img.shields.io/badge/idioma-pt--BR-009c3b?style=flat-square)
@@ -218,6 +218,34 @@ O Vigia envia **na hora** (você já leu o texto no ChatGPT) e **avisa por voz**
 > 🔑 O endereço tem um **código secreto**: quem tiver o link consegue enviar pelo seu WhatsApp e e-mail. Não compartilhe.
 > Sem o código, o Vigia responde "não encontrado". Limite de 30 envios por hora.
 
+### 🔎 Consulta do WhatsApp pelo ChatGPT (somente leitura, opcional)
+
+Com `GPT_WHATSAPP_LEITURA=1` no `.env`, o Vigia guarda **todas** as mensagens do WhatsApp num banco local
+(`dados/whatsapp-mensagens.db`, SQLite embutido no Node, fora do Git) e abre um **segundo endereço**, separado, só de consulta:
+`…/mcp-leitura?chave=…` (fica em `LINK-DO-CHATGPT.txt`). Adicione-o no ChatGPT como outro servidor MCP (Sem autenticação; a chave
+do endereço é a senha). A chave de envio não funciona nesse endereço, e a de consulta não envia nada.
+
+O banco guarda mensagens **enviadas e recebidas**, conversas individuais e **grupos**, **arquivadas**, respostas/citações,
+encaminhadas, editadas e apagadas (ficam marcadas, nunca somem), anexos (PDF, imagem, áudio, documento) e horários em
+**America/Sao_Paulo**. Nunca apaga, não duplica, continua depois de reiniciar e reconecta sozinho. Na primeira vez, migra o
+cache antigo (`recebidas.json`, últimas 30 por conversa) e o histórico de avisos (`historico.jsonl`, marcado como `aviso_legado`).
+
+| Ferramenta | O que faz |
+|---|---|
+| `consultar_mensagens_whatsapp` | Consulta com filtros opcionais: contato (nome parcial, sem acento), telefone (qualquer formato), palavra-chave, `data_inicial`/`data_final`, direção, tipo, grupos, arquivadas, limite, ordem e cursor |
+| `buscar_mensagens_whatsapp` | Busca por palavra-chave (também no nome dos arquivos), com os mesmos filtros |
+| `consultar_historico_conversa` | A conversa com um contato ou grupo, em ordem de leitura, paginada |
+| `listar_conversas_whatsapp` | Conversas com última mensagem, arquivada, não lidas (quando o WhatsApp informa) e mensagens no banco |
+| `listar_contatos_whatsapp` / `listar_grupos_whatsapp` | Contatos e grupos conhecidos |
+| `consultar_anexos_whatsapp` / `obter_anexo_whatsapp` | Lista anexos e baixa o arquivo (imagem, PDF, áudio) |
+| `sincronizar_historico_whatsapp` | Pede ao celular mensagens **mais antigas** de uma conversa (sem garantia: depende do celular online) |
+| `verificar_status_whatsapp` | Conexão, cobertura real do banco e limitações |
+
+Toda resposta traz `situacao` (`ok`, `sem_mensagens`, `nao_sincronizado`, `contato_nao_encontrado`, `historico_incompleto`,
+`falha_conexao`), `total`, `has_more`, `cursor`, `historico_incompleto` e a `cobertura` (mensagem mais antiga guardada, desde quando
+grava, origem dos dados). O Vigia **não promete** histórico que o WhatsApp não entregou. As consultas não enviam mensagens e não
+marcam nada como lido. O log registra só contagens, nunca o conteúdo das mensagens.
+
 ---
 
 ## ⚙️ Configuração (`.env`)
@@ -241,6 +269,7 @@ O Vigia envia **na hora** (você já leu o texto no ChatGPT) e **avisa por voz**
 | `MICROFONE_ORIGEM` | De onde vem a sua voz (`notebook` = microfone da página) | `notebook` · `pc` |
 | `CLIMA_CIDADE` / `CLIMA_LAT` / `CLIMA_LON` | Previsão do bom dia | `Recife` / `-8.05` / `-34.9` |
 | `GPT` / `NGROK_TOKEN` / `NGROK_DOMINIO` | Conector do ChatGPT (o CONECTAR-CHATGPT.bat preenche) | `1` |
+| `GPT_WHATSAPP_LEITURA` | Banco de mensagens + endereço separado de consulta do WhatsApp pelo ChatGPT | `1` |
 | `SMTP_HOST` / `SMTP_PORTA` / `EMAIL_NOME` | Envio de e-mail pelo conector | `smtp.gmail.com` / `465` |
 
 ---
@@ -248,7 +277,7 @@ O Vigia envia **na hora** (você já leu o texto no ChatGPT) e **avisa por voz**
 ## 🔐 Privacidade e segurança
 
 - **Suas senhas e chaves ficam só no `.env`**, que está no `.gitignore` e nunca é enviado.
-- **Login do WhatsApp, contatos e histórico** ficam em `dados/`, também fora do Git. Não compartilhe essa pasta.
+- **Login do WhatsApp, contatos, histórico e o banco de mensagens** (`dados/whatsapp-mensagens.db` e anexos baixados em `dados/anexos-whatsapp/`) ficam em `dados/`, também fora do Git. Não compartilhe essa pasta.
 - **Nada é enviado sem confirmação falada.** O Vigia não responde nem encaminha nada sozinho. A única exceção é o **conector do ChatGPT** (desligado de fábrica): ele envia o que você pediu no ChatGPT e avisa por voz.
 - **O que vai para fora do seu PC:** o texto das mensagens e os áudios vão para o **Google Gemini** (resumo e transcrição). Os comandos de voz da página usam o **reconhecimento de voz do Chrome/Edge**, que também passa por servidores do Google (ou da Microsoft, no Edge). A previsão do tempo usa a **Open-Meteo** (só a cidade).
 - A página do Vigia só abre com a **chave secreta** do link.
@@ -327,6 +356,8 @@ vigia/
 └── src/
     ├── index.js            # ponto de entrada
     ├── whatsapp.js         # leitura, áudios, busca de contatos por som
+    ├── whatsapp-banco.js   # banco permanente de mensagens (SQLite embutido no Node)
+    ├── ferramentas-whatsapp.js # ferramentas MCP de consulta (somente leitura)
     ├── email.js            # IMAP com IDLE
     ├── enviar-email.js     # SMTP com anexos + cópia em Enviados (conector do ChatGPT)
     ├── conector-gpt.js     # servidor MCP para o ChatGPT (túnel ngrok)

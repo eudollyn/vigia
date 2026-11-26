@@ -13,3 +13,10 @@ Thumbs.db
 # Conector do ChatGPT: seus PDFs e o endereço secreto
 arquivos-para-o-gpt/
 LINK-DO-CHATGPT.txt
+
+# Banco de mensagens do WhatsApp e anexos baixados (também ficam em dados/)
+*.db
+*.db-wal
+*.db-shm
+anexos-whatsapp/
+backups-vigia/

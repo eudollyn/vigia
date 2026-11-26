@@ -11,12 +11,13 @@ import QRCode from 'qrcode';
 import qrTerminal from 'qrcode-terminal';
 import { exec } from 'node:child_process';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { config, DADOS, aplicarApelidos } from './config.js';
 import { log, notificar, registrarEnvio, registrarEnvioAudio, registrarEncaminhar, marcarConversa, conversaAtiva } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
-import { consultarRecebidas, expandirIdsConsulta } from './consulta-whatsapp.js';
+import { BancoWhatsApp, isoSP, telefoneDoJid } from './whatsapp-banco.js';
 
 const SESSAO = path.join(DADOS, 'whatsapp-sessao');
 const CONTATOS = path.join(DADOS, 'contatos.json');
@@ -273,31 +274,185 @@ function guardarRecebida(jid, msg) {
     tRecebidas = setTimeout(() => { try { fs.writeFileSync(ARQ_RECEBIDAS, JSON.stringify(recebidas)); } catch {} }, 2000);
   } catch (e) { log(`WhatsApp: não guardei a mensagem original (${e.message})`); }
 }
-/** Consulta o cache existente sem usar o socket ou alterar o estado das conversas. */
-export function consultarMensagensWhatsApp(filtros) {
-  const memo = new Map();
-  const lerMapa = (id, reverso) => {
-    if (!/^\d+$/.test(id)) return null;
-    try {
-      return JSON.parse(fs.readFileSync(path.join(SESSAO, 'lid-mapping-' + id + (reverso ? '_reverse' : '') + '.json'), 'utf8'));
-    } catch { return null; }
-  };
-  const idsConsulta = (jid) => {
-    if (!memo.has(jid)) {
-      const aliases = expandirIdsConsulta(idsDoContato(jid), lerMapa);
-      memo.set(jid, [...new Set(aliases.flatMap(idsDoContato))]);
+// (a consulta antiga, só deste cache de 30 por conversa, foi substituída pelo banco permanente abaixo;
+//  o cache continua existindo para o "encaminhe essa mensagem" e foi migrado para o banco)
+
+// ---------- banco permanente de mensagens (SQLite, dados/whatsapp-mensagens.db) ----------
+// Grava TUDO (enviadas, recebidas, grupos, arquivadas, histórico entregue pelo celular), nunca apaga, sem duplicar.
+// Só leitura do ponto de vista do WhatsApp: gravar aqui não envia nada nem marca como lido. Log só com contagens.
+const ARQ_BANCO = path.join(DADOS, 'whatsapp-mensagens.db');
+const PASTA_ANEXOS = path.join(DADOS, 'anexos-whatsapp');
+const lerMapaLid = (id, reverso) => {
+  if (!/^\d+$/.test(String(id || ''))) return null;
+  try { return JSON.parse(fs.readFileSync(path.join(SESSAO, 'lid-mapping-' + id + (reverso ? '_reverse' : '') + '.json'), 'utf8')); } catch { return null; }
+};
+let banco = null;
+const conexaoWa = { situacao: config.whatsapp ? 'iniciando' : 'desligado', desdeMs: Date.now(), reconexoes: 0, ultimoCodigo: null, ultimaMensagemMs: null };
+const mudarConexao = (situacao, codigo) => {
+  if (conexaoWa.situacao !== situacao) { conexaoWa.situacao = situacao; conexaoWa.desdeMs = Date.now(); }
+  if (codigo !== undefined) conexaoWa.ultimoCodigo = codigo;
+};
+/** Abre (uma vez) o banco e migra o cache antigo e a agenda. Falha aqui nunca derruba o Vigia. */
+export function bancoWhatsApp() {
+  if (banco) return banco;
+  try {
+    banco = new BancoWhatsApp(ARQ_BANCO, {
+      pnDoLid: (lid) => { const pn = lerMapaLid(lid, true); return pn && String(lerMapaLid(pn, false)) === String(lid) ? String(pn) : null; },
+      lidDoPn: (pn) => { const lid = lerMapaLid(pn, false); return lid && String(lerMapaLid(lid, true)) === String(pn) ? String(lid) : null; },
+    });
+    if (!banco.estado('migrado_contatos_json')) {
+      banco.transacao(() => { for (const [jid, c] of Object.entries(contatos)) banco.gravarContato({ ...c, jid }); });
+      banco.definirEstado('migrado_contatos_json', String(Date.now()));
     }
-    return memo.get(jid);
-  };
-  return consultarRecebidas(recebidas, filtros, {
-    decodificar: (base64) => proto.WebMessageInfo.decode(Buffer.from(base64, 'base64')),
-    idsDoContato: idsConsulta,
-    estaArquivada,
-    nomesDoContato: (jid) => {
-      const c = contatos[jid];
-      return [c?.name, c?.notify, c?.verifiedName];
-    },
+    if (!banco.estado('migrado_recebidas_json')) {
+      const r = banco.migrarCacheRecebidas(recebidas);
+      banco.definirEstado('migrado_recebidas_json', JSON.stringify({ em: Date.now(), ...r }));
+      log(`WhatsApp: banco de mensagens criado; ${r.novas} mensagens do cache antigo migradas`);
+    }
+    banco.transacao(() => {
+      for (const id of arquivadas) banco.gravarConversa({ id, arquivada: true });
+      for (const [id, ate] of Object.entries(silenciadasZap)) banco.gravarConversa({ id, silenciada_ate: ate });
+    });
+  } catch (e) {
+    log(`WhatsApp: banco de mensagens indisponível (${e.message})`);
+    try { banco?.fechar(); } catch {}
+    banco = null;
+  }
+  return banco;
+}
+const noBanco = (fn) => { try { const b = bancoWhatsApp(); if (b) return fn(b); } catch (e) { log(`WhatsApp: banco: ${e.message}`); } return undefined; };
+
+/** Avisos antigos (historico.jsonl) entram uma vez, depois que os grupos foram carregados (para achar o grupo pelo nome). */
+function migrarAvisosAntigos() {
+  noBanco((b) => {
+    if (b.estado('migrado_historico_avisos')) return;
+    let itens = [];
+    try {
+      itens = fs.readFileSync(path.join(DADOS, 'historico.jsonl'), 'utf8').split('\n')
+        .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((x) => x?.canal === 'whatsapp');
+    } catch {}
+    const r = b.migrarHistoricoAvisos(itens);
+    b.definirEstado('migrado_historico_avisos', JSON.stringify({ em: Date.now(), ...r }));
+    log(`WhatsApp: histórico de avisos antigo migrado (${r.novas} trechos novos de ${r.linhas})`);
   });
+}
+
+/** Estado da conexão para as ferramentas de consulta. */
+export function statusWhatsApp() {
+  return {
+    situacao: conexaoWa.situacao,
+    desde: isoSP(Math.floor(conexaoWa.desdeMs / 1000)),
+    eu: meuJid ? { telefone: telefoneDoJid(meuJid) } : null,
+    reconexoes: conexaoWa.reconexoes,
+    ...(conexaoWa.ultimoCodigo ? { ultimo_codigo_desconexao: conexaoWa.ultimoCodigo } : {}),
+    ultima_mensagem_ao_vivo: conexaoWa.ultimaMensagemMs ? isoSP(Math.floor(conexaoWa.ultimaMensagemMs / 1000)) : null,
+    somente_leitura: 'As consultas não enviam mensagens nem marcam como lidas.',
+  };
+}
+
+// histórico pedido ao celular (ON_DEMAND): quem está esperando a resposta
+const esperandoHistorico = new Set();
+/** Pede ao celular mensagens anteriores à mais antiga guardada da conversa. */
+export async function sincronizarHistorico(conversa, { quantidade = 50, lotes = 1, aguardarMs = 20_000 } = {}) {
+  const b = bancoWhatsApp();
+  if (!b) throw new Error('falha_banco: banco de mensagens indisponível.');
+  const antes = b.contarConversa(conversa);
+  const base = { id_conversa: conversa, conversa: b.nomeDe(conversa) || telefoneDoJid(conversa), mensagens_no_banco_antes: antes.n, mais_antiga_antes: isoSP(antes.antiga) };
+  if (!sockAtual || conexaoWa.situacao !== 'conectado') {
+    return { ...base, situacao: 'falha_conexao', avisos: [`O WhatsApp do Vigia está "${conexaoWa.situacao}". Tente quando estiver conectado.`] };
+  }
+  const pedidos = [];
+  const prazo = Date.now() + 52_000; // a resposta precisa voltar antes do ChatGPT desistir
+  for (let i = 0; i < lotes; i++) {
+    const ancora = b.maisAntigaComOriginal(conversa);
+    if (!ancora) break;
+    const espera = Math.min(aguardarMs, prazo - Date.now());
+    if (espera < 5000) break;
+    let recebidas = 0, novas = 0, respondeu = false;
+    let idPedido = null;
+    // o celular pode conhecer a conversa pelo LID ou pelo telefone: tenta a forma original e, sem resposta, a outra
+    const formas = [...new Set([ancora.jid_original, ...b.idsDe(conversa).filter((j) => !j.endsWith('@g.us'))])].slice(0, 2);
+    for (const [k, jidPedido] of formas.entries()) {
+    const esperaForma = k === 0 ? (formas.length > 1 ? Math.min(espera, 15_000) : espera) : Math.max(5000, Math.min(espera, prazo - Date.now()));
+    if (k > 0 && (respondeu || esperaForma < 5000)) break;
+    await new Promise((ok) => {
+      let fimCurto;
+      const terminar = () => { clearTimeout(fimLongo); clearTimeout(fimCurto); esperandoHistorico.delete(ouvir); ok(); };
+      const fimLongo = setTimeout(terminar, esperaForma);
+      const ouvir = (info) => {
+        const meu = info.porConversa.get(conversa);
+        const ehMeu = meu || (idPedido && info.sessao === idPedido);
+        if (!ehMeu) return;
+        respondeu = true;
+        if (meu) { recebidas += meu.total; novas += meu.novas; }
+        clearTimeout(fimCurto); fimCurto = setTimeout(terminar, 3000); // pode vir em vários pedaços
+      };
+      esperandoHistorico.add(ouvir);
+      sockAtual.fetchMessageHistory(quantidade, { remoteJid: jidPedido, fromMe: !!ancora.de_mim, id: ancora.msg_id }, ancora.ts * 1000)
+        .then((id) => { idPedido = id; })
+        .catch((e) => { log(`WhatsApp: pedido de histórico falhou (${e.message})`); terminar(); });
+    });
+    }
+    const situacao = novas ? 'historico_recebido' : respondeu ? 'nada_novo' : 'sem_resposta_do_celular';
+    b.registrarSincronizacao({ conversa, quantidade, recebidas, novas, situacao });
+    pedidos.push({ ancora_data_hora: isoSP(ancora.ts), recebidas_do_celular: recebidas, novas_gravadas: novas, situacao });
+    if (!novas) break;
+  }
+  const depois = b.contarConversa(conversa);
+  const novasTotal = pedidos.reduce((s, p) => s + p.novas_gravadas, 0);
+  log(`WhatsApp: histórico sob demanda: ${pedidos.length} pedido(s), ${novasTotal} mensagens novas`);
+  return {
+    ...base,
+    situacao: novasTotal ? 'historico_recebido' : (pedidos.some((p) => p.situacao === 'nada_novo') ? 'nada_novo' : 'sem_resposta_do_celular'),
+    pedidos, novas_gravadas: novasTotal, mensagens_no_banco_depois: depois.n, mais_antiga_agora: isoSP(depois.antiga),
+    historico_completo: false,
+    avisos: novasTotal ? ['Pode haver mensagens ainda mais antigas: repita para continuar voltando no tempo.']
+      : ['O celular não entregou mensagens anteriores (pode estar offline, sem histórico mais antigo ou o WhatsApp recusou o pedido). Nada foi inventado.'],
+  };
+}
+
+const EXT = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'audio/ogg': '.ogg', 'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a', 'video/mp4': '.mp4', 'application/msword': '.doc', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.ms-excel': '.xls', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx' };
+/** Baixa o arquivo de uma mensagem guardada (não envia nada, não marca como lido). Cópia fica em dados/anexos-whatsapp. */
+export async function baixarAnexo(msgId, { maxBytes = 8 * 1024 * 1024 } = {}) {
+  const b = bancoWhatsApp();
+  if (!b) throw new Error('falha_banco: banco de mensagens indisponível.');
+  const row = b.original(msgId);
+  if (!row) return { situacao: 'nao_encontrada', id_mensagem: msgId, avisos: ['Não há mensagem com esse id no banco.'] };
+  let a = null; try { a = JSON.parse(row.anexo || 'null'); } catch {}
+  if (!a) return { situacao: 'sem_anexo', id_mensagem: msgId, tipo: row.tipo };
+  if (row.visualizacao_unica) return { situacao: 'indisponivel', id_mensagem: msgId, avisos: ['Mídia de visualização única não é guardada nem baixada.'] };
+  if (!row.original || !a.baixavel) return { situacao: 'indisponivel', id_mensagem: msgId, anexo: a, avisos: ['Esta mensagem não tem os dados necessários para baixar o arquivo (veio de aviso antigo ou sem mídia).'] };
+  const mimetype = String(a.mimetype || 'application/octet-stream').split(';')[0];
+  const ext = EXT[mimetype] || (a.nome && path.extname(a.nome)) || '';
+  const arq = path.join(PASTA_ANEXOS, crypto.createHash('sha1').update(String(msgId)).digest('hex') + ext);
+  let buf = null;
+  try { buf = fs.readFileSync(arq); } catch {}
+  if (!buf) {
+    if (!sockAtual || conexaoWa.situacao !== 'conectado') return { situacao: 'falha_conexao', id_mensagem: msgId, anexo: a, avisos: ['O WhatsApp do Vigia não está conectado para baixar o arquivo.'] };
+    const msg = proto.WebMessageInfo.decode(row.original);
+    const sock = sockAtual;
+    try {
+      buf = await Promise.race([
+        downloadMediaMessage(msg, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: (m) => sock.updateMediaMessage(m) }),
+        new Promise((_, nao) => setTimeout(() => nao(new Error('demorou mais de 45 s')), 45_000)),
+      ]);
+    } catch (e) {
+      return { situacao: 'falha_download', id_mensagem: msgId, anexo: a, avisos: [`Não consegui baixar o arquivo do WhatsApp (${e.message}). Arquivos antigos podem ter expirado e o celular precisa estar online para reenviar.`] };
+    }
+    try { fs.mkdirSync(PASTA_ANEXOS, { recursive: true }); fs.writeFileSync(arq, buf); } catch {}
+  }
+  const info = {
+    situacao: 'ok', id_mensagem: msgId, tipo: a.tipo, nome: a.nome || `anexo${ext}`, mimetype, tamanho_bytes: buf.length,
+    sha256: crypto.createHash('sha256').update(buf).digest('hex'), data_hora: isoSP(row.ts),
+  };
+  if (buf.length > maxBytes) return { ...info, conteudo_incluido: false, avisos: [`Arquivo maior que ${Math.round(maxBytes / 1048576)} MB: só os dados do arquivo foram devolvidos.`] };
+  const data = buf.toString('base64');
+  const conteudo = mimetype.startsWith('image/')
+    ? [{ type: 'image', data, mimeType: mimetype }]
+    : [{ type: 'resource', resource: { uri: `vigia-whatsapp://anexo/${encodeURIComponent(msgId)}${ext}`, mimeType: mimetype, blob: data } }];
+  return { ...info, conteudo_incluido: true, _conteudo: conteudo };
 }
 
 // ---------- envio pedido pelo ChatGPT (conector-gpt.js) ----------
@@ -373,6 +528,7 @@ try { enviadas = JSON.parse(fs.readFileSync(ARQ_ENVIADAS, 'utf8')); } catch {}
 function guardarEnviada(m) {
   try {
     if (!m?.key?.id || !m.message) return;
+    noBanco((b) => b.gravarMensagem(m, 'envio_vigia'));
     enviadas[m.key.id] = Buffer.from(proto.Message.encode(m.message).finish()).toString('base64');
     const ids = Object.keys(enviadas);
     for (const id of ids.slice(0, Math.max(0, ids.length - 200))) delete enviadas[id];
@@ -387,6 +543,7 @@ async function buscarEnviada(key) {
 }
 
 export function iniciarWhatsApp(aoChegar) {
+  bancoWhatsApp();
   // Recupera o que chegou enquanto o Vigia estava fora (PC desligado, reinício): aceita mensagens desde a última
   // vez que ele esteve ligado (dados/whatsapp-visto.txt, gravado a cada 30 s), no máximo 18 h para trás.
   // As que chegaram ANTES de ligar viram "atrasadas": não são faladas uma a uma, entram num aviso único.
@@ -461,20 +618,58 @@ export function iniciarWhatsApp(aoChegar) {
       return m;
     });
     meuJid = jidNormalizedUser(sock.user?.id || ""); sockAtual = sock;
-    sock.ev.on('contacts.upsert', (lista) => { for (const c of lista) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); });
-    sock.ev.on('contacts.update', (lista) => { for (const c of lista) if (c.id) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); });
-    sock.ev.on('groups.update', (lista) => { for (const g of lista) if (g.id && g.subject) nomesGrupo[g.id] = g.subject; });
+    const contatosNoBanco = (lista) => noBanco((b) => b.transacao(() => { for (const c of lista || []) if (c?.id) b.gravarContato({ ...contatos[jidNormalizedUser(c.id)], jid: c.id }); }));
+    sock.ev.on('contacts.upsert', (lista) => { for (const c of lista) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); contatosNoBanco(lista); });
+    sock.ev.on('contacts.update', (lista) => { for (const c of lista) if (c.id) contatos[jidNormalizedUser(c.id)] = { ...contatos[jidNormalizedUser(c.id)], ...c }; salvarContatos(); contatosNoBanco(lista); });
+    sock.ev.on('groups.update', (lista) => { for (const g of lista) if (g.id && g.subject) { nomesGrupo[g.id] = g.subject; noBanco((b) => b.gravarConversa({ id: g.id, tipo: 'grupo', nome: g.subject })); } });
+    sock.ev.on('lid-mapping.update', (m) => noBanco((b) => { for (const x of [].concat(m || [])) if (x?.lid && x?.pn) b.registrarAlias(x.lid, x.pn); }));
+    // status das mensagens enviadas (entregue/lida pelo destinatário)
+    sock.ev.on('messages.update', (lista) => noBanco((b) => { for (const u of lista || []) if (u?.key?.fromMe && typeof u.update?.status === 'number') b.atualizarStatusEnvio(u.key.id, u.update.status); }));
     // arquivar/desarquivar no celular (e a lista inicial ao conectar)
-    const lerChats = (lista) => {
+    const lerChats = (lista, absoluto = false) => {
       for (const c of lista || []) {
         if (!c?.id) continue;
         if (typeof c.archived === 'boolean') marcarArquivada(c.id, c.archived);
         if ('muteEndTime' in c) marcarSilenciada(c.id, c.muteEndTime); // silenciou / tirou o silêncio no celular
       }
+      noBanco((b) => b.transacao(() => {
+        for (const c of lista || []) {
+          if (!c?.id || isJidStatusBroadcast(c.id) || isJidBroadcast(c.id) || isJidNewsletter(c.id)) continue;
+          const reg = { id: c.id };
+          if (typeof c.archived === 'boolean') reg.arquivada = c.archived;
+          if ('muteEndTime' in c) reg.silenciada_ate = c.muteEndTime ? Number(c.muteEndTime) : null;
+          if (typeof c.pinned === 'number' || typeof c.pinned === 'boolean') reg.fixada = !!c.pinned;
+          if (c.name && isJidGroup(c.id)) reg.nome = c.name;
+          if (c.conversationTimestamp) reg.ultima_atividade_ts = Number(c.conversationTimestamp?.low ?? c.conversationTimestamp) || null;
+          b.gravarConversa(reg);
+          if (typeof c.unreadCount === 'number') b.ajustarNaoLidas(c.id, c.unreadCount, absoluto);
+        }
+      }));
     };
-    sock.ev.on('chats.upsert', lerChats);
-    sock.ev.on('chats.update', lerChats);
-    sock.ev.on('messaging-history.set', ({ chats }) => lerChats(chats));
+    sock.ev.on('chats.upsert', (l) => lerChats(l, true));
+    sock.ev.on('chats.update', (l) => lerChats(l, false));
+    // histórico entregue pelo celular (pacotes leves ao conectar e os pedidos sob demanda): só grava, nunca avisa
+    sock.ev.on('messaging-history.set', ({ chats, contacts, messages, syncType, peerDataRequestSessionId }) => {
+      lerChats(chats, true);
+      if (contacts?.length) noBanco((b) => b.transacao(() => { for (const c of contacts) if (c?.id) b.gravarContato({ ...c, jid: c.id }); }));
+      const porConversa = new Map();
+      noBanco((b) => b.transacao(() => {
+        for (const m of messages || []) {
+          try {
+            if (b.processarProtocolo(m)) continue;
+            const r = b.gravarMensagem(m, 'historico_whatsapp');
+            if (!r) continue;
+            const conv = b.canonico(m.key?.remoteJid, m.key?.remoteJidAlt);
+            const x = porConversa.get(conv) || { total: 0, novas: 0 };
+            x.total++; if (r === 'nova') x.novas++;
+            porConversa.set(conv, x);
+          } catch {}
+        }
+      }));
+      const novas = [...porConversa.values()].reduce((s, x) => s + x.novas, 0);
+      if (messages?.length || syncType === proto.HistorySync.HistorySyncType.ON_DEMAND) log(`WhatsApp: histórico recebido (tipo ${syncType}): ${messages?.length || 0} mensagens, ${novas} novas no banco`);
+      for (const f of [...esperandoHistorico]) { try { f({ porConversa, syncType, sessao: peerDataRequestSessionId }); } catch {} }
+    });
 
     // Mensagens pendentes vêm em lotes de 100 e cada lote precisa ser PEDIDO. O Baileys só pede o primeiro:
     // se havia mais de 100 pendentes (noite com muitos grupos), o servidor fica esperando e NÃO entrega nada ao
@@ -499,13 +694,19 @@ export function iniciarWhatsApp(aoChegar) {
       }
       if (connection === 'open') {
         tentativas = 0;
+        mudarConexao('conectado');
+        meuJid = jidNormalizedUser(sock.user?.id || meuJid);
         try { fs.unlinkSync(QR_PNG); } catch {}
         log(`WhatsApp: conectado como ${sock.user?.name || sock.user?.id}. Só leitura.`);
         // lista de grupos para o "envia mensagem para o grupo …"
         sock.groupFetchAllParticipating().then((g) => {
           for (const [id, m] of Object.entries(g || {})) if (m?.subject) { gruposTodos[id] = m.subject; nomesGrupo[id] = m.subject; }
           log(`WhatsApp: ${Object.keys(gruposTodos).length} grupos carregados para envio por voz.`);
-        }).catch(() => {});
+          noBanco((b) => b.transacao(() => {
+            for (const [id, m] of Object.entries(g || {})) b.gravarConversa({ id, tipo: 'grupo', nome: m?.subject || null, participantes: m?.participants?.length ?? null, criada_ts: m?.creation || null });
+          }));
+          migrarAvisosAntigos();
+        }).catch(() => { migrarAvisosAntigos(); });
         // Lista de arquivadas: pede uma cópia completa só da coleção de configurações das conversas ("regular_low").
         // Na sincronização inicial o Baileys só libera o "arquivada" de conversas que vieram no histórico (que não baixamos),
         // então refazemos essa coleção do zero como sincronização normal; assim cada "arquivada" vira um chats.update.
@@ -527,15 +728,18 @@ export function iniciarWhatsApp(aoChegar) {
       if (connection === 'close') {
         const codigo = lastDisconnect?.error?.output?.statusCode;
         if (codigo === DisconnectReason.loggedOut) {
+          mudarConexao('sessao_encerrada', codigo);
           log('WhatsApp: o aparelho foi desconectado no celular. Apague dados/whatsapp-sessao e rode de novo para gerar outro QR.');
           notificar('Vigia: WhatsApp desconectado', 'O aparelho foi removido no celular. Rode o Vigia de novo para escanear outro QR.', true);
           return;
         }
         if (codigo === DisconnectReason.connectionReplaced) {
+          mudarConexao('substituida_por_outra_sessao', codigo);
           log('WhatsApp: outra sessão do Vigia assumiu a conexão. Esta foi encerrada.');
           return;
         }
         const espera = codigo === DisconnectReason.restartRequired ? 1 : Math.min(300, 3 * 2 ** Math.min(tentativas++, 7));
+        mudarConexao('reconectando', codigo ?? null); conexaoWa.reconexoes++;
         log(`WhatsApp: conexão caiu (${codigo ?? 'sem código'}), reconectando em ${espera}s`);
         setTimeout(conectar, espera * 1000);
       }
@@ -544,6 +748,11 @@ export function iniciarWhatsApp(aoChegar) {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       // 'append' = mensagens entregues ao reconectar; o filtro de horário abaixo descarta as antigas.
       if (type !== 'notify' && type !== 'append') return;
+      // banco permanente: TODA mensagem (sua, recebida, grupo, arquivada) antes dos filtros de aviso
+      noBanco((b) => b.transacao(() => {
+        for (const msg of messages) { try { if (!b.processarProtocolo(msg)) b.gravarMensagem(msg, 'ao_vivo'); } catch {} }
+      }));
+      conexaoWa.ultimaMensagemMs = Date.now();
       for (const msg of messages) {
         try {
           const jid = msg.key?.remoteJid;

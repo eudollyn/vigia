@@ -25,7 +25,7 @@ if (-not $node) {
   } else { Aviso "Instale em https://nodejs.org e rode o INSTALAR.bat de novo."; exit 1 }
 }
 $versao = [int]((node -v).TrimStart('v').Split('.')[0])
-if ($versao -lt 20) { Aviso "Node $((node -v)) e antigo. Instale a versao 20 ou mais nova em https://nodejs.org"; exit 1 }
+if ($versao -lt 22) { Aviso "Node $((node -v)) e antigo. Instale a versao 22.13 ou mais nova em https://nodejs.org"; exit 1 }
 Ok "Node $(node -v)"
 
 # 2) ffmpeg (voz Microsoft e microfone do PC)
