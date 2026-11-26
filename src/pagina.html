@@ -366,7 +366,7 @@ const semAcentoP = (t) => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').
 // mas uma escuta SÓ de "cancelar" continua ligada: falou "cancela", o som para na hora.
 let recCancel=null, cancelAtivo=false, querEscutaCancelar=false;
 function ligarEscutaCancelar(){
-  if(typeof SR==='undefined' || !SR || !micOk || musica) return;
+  if(typeof SR==='undefined' || !SR || !micOk) return; // vale também no modo música (só reage a "cancela")
   querEscutaCancelar=true;
   if(!recCancel){
     recCancel=new SR(); recCancel.lang='pt-BR'; recCancel.continuous=true; recCancel.interimResults=true;
