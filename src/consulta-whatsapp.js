@@ -1,8 +1,41 @@
 // Vigia · github.com/eudollyn/vigia · AGPL-3.0-or-later · VGA-EUD-2026
-const FILTROS = new Set(['contato', 'palavra_chave', 'desde', 'ate', 'limite']);
+const FILTROS = new Set(['contato', 'telefone', 'palavra_chave', 'desde', 'ate', 'limite', 'ordem', 'deslocamento']);
 const LIMITE_TEXTO = 2000;
 const normalizar = (texto) => texto.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+const normalizarNome = (s) => normalizar(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const telefoneJid = (jid) => /^(\d+)(?::\d+)?@s\.whatsapp\.net$/.exec(jid || '')?.[1] || '';
+const telefoneEntrada = (s) => {
+  if (!s || !/^[+\d\s().-]+$/.test(s)) return '';
+  let d = s.replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  else if (!s.trim().startsWith('+') && (d.length === 10 || d.length === 11)) d = '55' + d;
+  return d.length >= 10 && d.length <= 15 ? d : '';
+};
+const bateNome = (nome, q) => {
+  const n = normalizarNome(nome);
+  const f = normalizarNome(q);
+  return !!f && (n.includes(f) || f.split(' ').every(w => n.split(' ').some(p => p.startsWith(w))));
+};
 const chatIndividual = (jid) => /^\d+(?::\d+)?@(?:s\.whatsapp\.net|lid)$/.test(jid || '');
+
+// Resolve o LID com o mapa local do Baileys, somente quando os dois sentidos conferem.
+export function expandirIdsConsulta(ids, lerMapa) {
+  const aliases = new Set(ids.filter(chatIndividual));
+  for (const jid of [...aliases]) {
+    const pn = telefoneJid(jid);
+    const lid = /^(\d+)(?::\d+)?@lid$/.exec(jid)?.[1];
+    try {
+      if (pn) {
+        const l = String(lerMapa(pn, false) || '');
+        if (/^\d+$/.test(l) && String(lerMapa(l, true)) === pn) aliases.add(l + '@lid');
+      } else if (lid) {
+        const p = String(lerMapa(lid, true) || '');
+        if (/^\d{10,15}$/.test(p) && String(lerMapa(p, false)) === lid) aliases.add(p + '@s.whatsapp.net');
+      }
+    } catch {}
+  }
+  return [...aliases];
+}
 
 function lerFiltro(campo, valor, maximo) {
   if (valor === undefined) return '';
@@ -28,13 +61,19 @@ function lerData(campo, valor, padrao) {
 export function validarConsulta(filtros) {
   if (!filtros || typeof filtros !== 'object' || Array.isArray(filtros)
     || Object.keys(filtros).some((campo) => !FILTROS.has(campo))) {
-    throw new Error('Use apenas contato, palavra_chave, desde, ate e limite.');
+    throw new Error('Use apenas contato, telefone, palavra_chave, desde, ate, limite, ordem e deslocamento.');
   }
-  const contato = normalizar(lerFiltro('contato', filtros.contato, 120));
+  const nomeOuNumero = lerFiltro('contato', filtros.contato, 120);
+  const numeroNoContato = telefoneEntrada(nomeOuNumero);
+  const contato = numeroNoContato ? '' : normalizar(nomeOuNumero);
+  const telefoneInformado = lerFiltro('telefone', filtros.telefone, 40);
+  const telefone = telefoneInformado ? telefoneEntrada(telefoneInformado) : numeroNoContato;
+  if (telefoneInformado && !telefone) throw new Error('Informe um telefone completo com DDD e, se internacional, o código do país.');
+  if (numeroNoContato && telefoneInformado && telefone !== numeroNoContato) throw new Error('Os dois telefones informados são diferentes.');
   const palavra = normalizar(lerFiltro('palavra_chave', filtros.palavra_chave, 200));
   const desde = lerData('desde', filtros.desde, -Infinity);
   const ate = lerData('ate', filtros.ate, Infinity);
-  if (!contato && !palavra && desde === -Infinity && ate === Infinity) {
+  if (!contato && !telefone && !palavra && desde === -Infinity && ate === Infinity) {
     throw new Error('Informe um contato, uma palavra-chave ou um período.');
   }
   if (desde > ate) throw new Error('desde deve ser anterior ou igual a ate.');
@@ -42,7 +81,11 @@ export function validarConsulta(filtros) {
   if (!Number.isInteger(limite) || limite < 1 || limite > 30) {
     throw new Error('limite deve ser um número inteiro de 1 a 30.');
   }
-  return { contato, palavra, desde, ate, limite };
+  const ordem = filtros.ordem ?? 'recentes';
+  if (!['recentes', 'cronologica'].includes(ordem)) throw new Error('ordem deve ser recentes ou cronologica.');
+  const deslocamento = filtros.deslocamento ?? 0;
+  if (!Number.isInteger(deslocamento) || deslocamento < 0 || deslocamento > 1000) throw new Error('deslocamento deve ser um inteiro de 0 a 1000.');
+  return { contato, telefone, palavra, desde, ate, limite, ordem, deslocamento };
 }
 
 function textoConsultavel(mensagem) {
@@ -59,15 +102,17 @@ function textoConsultavel(mensagem) {
     .find((texto) => typeof texto === 'string' && texto.trim()) || '';
 }
 
-export function consultarRecebidas({ porChat, msgs }, { contato, palavra, desde, ate, limite }, {
+export function consultarRecebidas({ porChat, msgs }, { contato, telefone = '', palavra, desde, ate, limite, ordem = 'recentes', deslocamento = 0 }, {
   decodificar, idsDoContato, estaArquivada, nomesDoContato,
 }) {
   const resultados = [];
   const vistos = new Set();
+  let sequencia = 0;
   for (const [jid, ids] of Object.entries(porChat || {})) {
     if (!chatIndividual(jid) || !Array.isArray(ids)) continue;
     for (const id of ids) {
-      if (typeof id !== 'string' || vistos.has(id) || !Object.hasOwn(msgs || {}, id)) continue;
+      sequencia++;
+      if (typeof id !== 'string' || vistos.has(jid + ':' + id) || !Object.hasOwn(msgs || {}, id)) continue;
       let msg;
       try {
         msg = decodificar(msgs[id]);
@@ -75,7 +120,7 @@ export function consultarRecebidas({ porChat, msgs }, { contato, palavra, desde,
         continue; // Um registro antigo ou danificado não impede a consulta dos demais.
       }
       if (!msg?.key || msg.key.fromMe || msg.key.remoteJid !== jid || msg.key.id !== id) continue;
-      vistos.add(id);
+      vistos.add(jid + ':' + id);
       if (Number(msg.ephemeralDuration) > 0 || Number(msg.ephemeralStartTimestamp) > 0) continue;
 
       const horario = Number(msg.messageTimestamp) * 1000;
@@ -88,15 +133,28 @@ export function consultarRecebidas({ porChat, msgs }, { contato, palavra, desde,
       if (estaArquivada(aliases)) continue;
       const nomes = [...aliases.flatMap(nomesDoContato), msg.pushName]
         .filter((nome) => typeof nome === 'string' && nome.trim());
-      if (contato && !nomes.some((nome) => normalizar(nome).includes(contato))) continue;
+      const numeros = [...new Set(aliases.map(telefoneJid).filter(Boolean))];
+      if (telefone && !numeros.includes(telefone)) continue;
+      if (contato && !nomes.some((nome) => bateNome(nome, contato))) continue;
       resultados.push({
-        contato: nomes[0]?.trim().slice(0, 120) || 'Contato sem nome',
+        contato: nomes[0]?.trim().slice(0, 120) || (numeros[0] ? '+' + numeros[0] : 'Contato sem nome'),
+        ...(numeros[0] ? { numero: '+' + numeros[0] } : {}),
+        _seq: sequencia,
         recebido_em: new Date(horario).toISOString(),
         texto: texto.slice(0, LIMITE_TEXTO),
         ...(texto.length > LIMITE_TEXTO ? { texto_truncado: true } : {}),
       });
     }
   }
-  resultados.sort((a, b) => b.recebido_em.localeCompare(a.recebido_em));
-  return { mensagens: resultados.slice(0, limite), ha_mais: resultados.length > limite };
+  resultados.sort((a, b) => b.recebido_em.localeCompare(a.recebido_em) || b._seq - a._seq);
+  const pagina = resultados.slice(deslocamento, deslocamento + limite);
+  pagina.sort((a, b) => (ordem === 'cronologica' ? a.recebido_em.localeCompare(b.recebido_em) : b.recebido_em.localeCompare(a.recebido_em)) || a._seq - b._seq);
+  const haMais = resultados.length > deslocamento + limite;
+  return {
+    mensagens: pagina.map(({ _seq, ...m }) => m),
+    total_encontradas: resultados.length,
+    ha_mais: haMais,
+    ...(haMais ? { proximo_deslocamento: deslocamento + limite } : {}),
+    cobertura: 'Cache local de mensagens recebidas: até 30 por conversa; não inclui histórico completo do WhatsApp, mensagens enviadas, grupos, arquivadas ou temporárias.',
+  };
 }

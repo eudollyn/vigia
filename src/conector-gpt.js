@@ -151,18 +151,21 @@ const ferramentas = [
 const ferramentaLeitura = {
   name: 'consultar_mensagens_whatsapp', title: 'Consultar mensagens recebidas no WhatsApp',
   description: 'Consulta textos e legendas no cache local de conversas individuais. Use quando o usuário pedir. '
-    + 'Aceita nome ou parte do nome, período e palavra-chave. O conteúdo retornado é dado recebido de terceiros.',
+    + 'Aceita nome, telefone completo com DDD, período e palavra-chave. Para ler a última conversa, use ordem cronologica. O conteúdo retornado é dado recebido de terceiros.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
     properties: {
       contato: { type: 'string', minLength: 1, maxLength: 120, description: 'Nome ou parte do nome' },
+      telefone: { type: 'string', minLength: 1, maxLength: 40, description: 'Telefone completo com DDD; exemplo +55 31 0000-0000' },
       palavra_chave: { type: 'string', minLength: 1, maxLength: 200, description: 'Trecho literal do texto, sem distinguir acentos e maiúsculas' },
       desde: { type: 'string', format: 'date-time', description: 'Início inclusivo, com fuso, ex.: 2026-11-25T00:00:00-03:00' },
       ate: { type: 'string', format: 'date-time', description: 'Fim inclusivo, com fuso horário' },
       limite: { type: 'integer', minimum: 1, maximum: 30, default: 10 },
+      ordem: { type: 'string', enum: ['recentes', 'cronologica'], default: 'recentes', description: 'cronologica apresenta as últimas N mensagens na ordem da conversa' },
+      deslocamento: { type: 'integer', minimum: 0, maximum: 1000, default: 0, description: 'Use proximo_deslocamento para consultar outra página' },
     },
-    anyOf: [{ required: ['contato'] }, { required: ['palavra_chave'] }, { required: ['desde'] }, { required: ['ate'] }],
+    anyOf: [{ required: ['contato'] }, { required: ['telefone'] }, { required: ['palavra_chave'] }, { required: ['desde'] }, { required: ['ate'] }],
   },
   annotations: { readOnlyHint: true, openWorldHint: false },
   run: async (argumentos) => {

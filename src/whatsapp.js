@@ -16,7 +16,7 @@ import { config, DADOS, aplicarApelidos } from './config.js';
 import { log, notificar, registrarEnvio, registrarEnvioAudio, registrarEncaminhar, marcarConversa, conversaAtiva } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
-import { consultarRecebidas } from './consulta-whatsapp.js';
+import { consultarRecebidas, expandirIdsConsulta } from './consulta-whatsapp.js';
 
 const SESSAO = path.join(DADOS, 'whatsapp-sessao');
 const CONTATOS = path.join(DADOS, 'contatos.json');
@@ -275,9 +275,23 @@ function guardarRecebida(jid, msg) {
 }
 /** Consulta o cache existente sem usar o socket ou alterar o estado das conversas. */
 export function consultarMensagensWhatsApp(filtros) {
+  const memo = new Map();
+  const lerMapa = (id, reverso) => {
+    if (!/^\d+$/.test(id)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(path.join(SESSAO, 'lid-mapping-' + id + (reverso ? '_reverse' : '') + '.json'), 'utf8'));
+    } catch { return null; }
+  };
+  const idsConsulta = (jid) => {
+    if (!memo.has(jid)) {
+      const aliases = expandirIdsConsulta(idsDoContato(jid), lerMapa);
+      memo.set(jid, [...new Set(aliases.flatMap(idsDoContato))]);
+    }
+    return memo.get(jid);
+  };
   return consultarRecebidas(recebidas, filtros, {
     decodificar: (base64) => proto.WebMessageInfo.decode(Buffer.from(base64, 'base64')),
-    idsDoContato,
+    idsDoContato: idsConsulta,
     estaArquivada,
     nomesDoContato: (jid) => {
       const c = contatos[jid];
