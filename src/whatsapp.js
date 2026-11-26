@@ -16,6 +16,7 @@ import { config, DADOS, aplicarApelidos } from './config.js';
 import { log, notificar, registrarEnvio, registrarEnvioAudio, registrarEncaminhar, marcarConversa, conversaAtiva } from './avisos.js';
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
+import { consultarRecebidas } from './consulta-whatsapp.js';
 
 const SESSAO = path.join(DADOS, 'whatsapp-sessao');
 const CONTATOS = path.join(DADOS, 'contatos.json');
@@ -272,6 +273,19 @@ function guardarRecebida(jid, msg) {
     tRecebidas = setTimeout(() => { try { fs.writeFileSync(ARQ_RECEBIDAS, JSON.stringify(recebidas)); } catch {} }, 2000);
   } catch (e) { log(`WhatsApp: não guardei a mensagem original (${e.message})`); }
 }
+/** Consulta o cache existente sem usar o socket ou alterar o estado das conversas. */
+export function consultarMensagensWhatsApp(filtros) {
+  return consultarRecebidas(recebidas, filtros, {
+    decodificar: (base64) => proto.WebMessageInfo.decode(Buffer.from(base64, 'base64')),
+    idsDoContato,
+    estaArquivada,
+    nomesDoContato: (jid) => {
+      const c = contatos[jid];
+      return [c?.name, c?.notify, c?.verifiedName];
+    },
+  });
+}
+
 // ---------- envio pedido pelo ChatGPT (conector-gpt.js) ----------
 /** Contatos salvos e grupos que batem com o nome (até 8), com o número quando houver. */
 export function pesquisarContatos(nome) {
