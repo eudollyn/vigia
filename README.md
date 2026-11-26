@@ -410,7 +410,7 @@ Copyright © 2026 [eudollyn](https://github.com/eudollyn).
 
 <div align="center">
 
-$148$248">
+<img src="assets/vigia-logo.png" alt="Vigia" width="48" height="48">
 
 Feito com ☕ no Brasil · Licença [AGPL-3.0](LICENSE)
 
