@@ -108,7 +108,7 @@ test('MCP autentica a consulta e restringe cada credencial ao próprio conjunto 
   assert.deepEqual(lista.result.tools.map((f) => f.name).sort(), [...FERRAMENTAS_LEITURA].sort());
   assert.ok(lista.result.tools.every((f) => f.annotations.readOnlyHint === true));
   const envioLista = await (await post(envio, 'tools/list')).json();
-  assert.deepEqual(envioLista.result.tools.map((f) => f.name), ['listar_arquivos', 'pesquisar_contatos', 'enviar_whatsapp', 'enviar_email']);
+  assert.deepEqual(envioLista.result.tools.map((f) => f.name), ['listar_arquivos', 'pesquisar_contatos', 'enviar_whatsapp', 'enviar_email', 'responder_email']);
   const params = { name: 'consultar_mensagens_whatsapp', arguments: { palavra_chave: 'cotação', limite: 1 } };
   assert.equal((await (await post(envio, 'tools/call', params)).json()).error.code, -32602);
   assert.equal((await (await post(leitura, 'tools/call', { name: 'enviar_whatsapp' })).json()).error.code, -32602);

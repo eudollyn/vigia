@@ -154,6 +154,27 @@ const ferramentas = [
       return { enviado: true, canal: 'email', para: r.para, cc: r.cc, assunto, arquivos: arqs.map((a) => a.nome) };
     },
   },
+  {
+    name: 'responder_email', title: 'Responder e-mail no mesmo fio',
+    description: 'Responde NA HORA, no mesmo fio (In-Reply-To/References), um e-mail recebido na Caixa de Entrada, para o Reply-To dele '
+      + '(ou o remetente), com assunto "Re: ...". id_original é o Message-ID do e-mail recebido (ex.: <abc123@exemplo.com.br>). '
+      + 'Se o original não for encontrado com segurança, nada é enviado. Use só quando a usuária pedir para responder, com o texto que ela já viu.',
+    inputSchema: { type: 'object', properties: {
+      id_original: { type: 'string', description: 'Message-ID do e-mail a responder' },
+      mensagem: { type: 'string', description: 'Corpo da resposta, em texto' },
+    }, required: ['id_original', 'mensagem'] },
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    run: async ({ id_original, mensagem }) => {
+      conferirLimite();
+      const { responderEmail } = await import('./enviar-email.js');
+      const r = await responderEmail({ idOriginal: id_original, mensagem });
+      const quem = r.para.join(', ');
+      log(`ChatGPT: resposta de e-mail enviada para ${quem} ("${r.assunto}")${r.aviso ? ' (sem cópia nos Enviados)' : ''}`);
+      notificar('ChatGPT respondeu um e-mail', `Para ${quem} · ${r.assunto}`);
+      naFila(() => dizer(`O ChatGPT respondeu o e-mail. Assunto: ${r.assunto}.`)).catch(() => {});
+      return { enviado: true, canal: 'email', para: r.para, assunto: r.assunto, em_resposta_a: r.inReplyTo, ...(r.aviso ? { aviso: r.aviso } : {}) };
+    },
+  },
 ];
 
 // Consulta do WhatsApp (somente leitura) pelo banco permanente: só no endereço de leitura (/mcp-leitura?chave=...).
@@ -166,7 +187,7 @@ const fonteWhatsApp = {
 };
 const ferramentasLeitura = criarFerramentasWhatsApp(fonteWhatsApp);
 // tempo máximo de cada ferramenta (o ChatGPT desiste por volta de 1 min)
-const TEMPO_MAX = { sincronizar_historico_whatsapp: 58_000, obter_anexo_whatsapp: 55_000, enviar_whatsapp: 90_000, enviar_email: 90_000 };
+const TEMPO_MAX = { sincronizar_historico_whatsapp: 58_000, obter_anexo_whatsapp: 55_000, enviar_whatsapp: 90_000, enviar_email: 90_000, responder_email: 90_000 };
 
 const instrucoesLeitura = 'Consulta somente leitura do WhatsApp do usuário (mensagens enviadas e recebidas, grupos, arquivadas, anexos), '
   + 'pelo banco local do Vigia. Use a pedido do usuário. Comece por consultar_mensagens_whatsapp ou consultar_historico_conversa; '
