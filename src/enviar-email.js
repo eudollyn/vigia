@@ -6,6 +6,7 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { config, emailAtivo } from './config.js';
 import { log } from './avisos.js';
 
@@ -95,18 +96,27 @@ export async function responderEmail({ idOriginal, mensagem }, dep = {}) {
   const { buscar = buscarOriginal, smtp = criarSmtp(), enviados = copiarParaEnviados, registrar = log } = dep;
   const r = montarResposta(await buscar(idOriginal));
   const de = config.email.nomeRemetente ? { name: config.email.nomeRemetente, address: config.email.usuario } : config.email.usuario;
-  const msg = { from: de, to: r.para, subject: r.assunto, text: String(mensagem), inReplyTo: r.inReplyTo, references: r.references };
+  // um Message-ID só por resposta, o mesmo no SMTP e na cópia dos Enviados (o fio fica igual dos dois lados)
+  const dominio = String(config.email.usuario).split('@')[1] || 'vigia.local';
+  const messageId = `<${crypto.randomUUID()}@${dominio}>`;
+  const msg = { from: de, to: r.para, subject: r.assunto, text: String(mensagem), inReplyTo: r.inReplyTo, references: r.references,
+    messageId, date: new Date() };
   const info = await smtp.sendMail(msg);
   let aviso;
   try { await enviados(msg); } catch (e) {
     aviso = `E-mail enviado, mas não consegui guardar a cópia nos Enviados (${e.message}). Não reenvie.`;
     registrar(`e-mail: resposta enviada, mas não consegui guardar nos Enviados (${e.message})`);
   }
-  return { para: r.para, assunto: r.assunto, inReplyTo: r.inReplyTo, references: r.references, info, ...(aviso ? { aviso } : {}) };
+  return { para: r.para, assunto: r.assunto, messageId, inReplyTo: r.inReplyTo, references: r.references, info, ...(aviso ? { aviso } : {}) };
+}
+
+/** Mensagem crua que vai para os Enviados. Mantém o Message-ID e a data de `msg`, se vierem. */
+export function montarCopiaEnviados(msg) {
+  return new MailComposer({ date: new Date(), ...msg }).compile().build();
 }
 
 async function copiarParaEnviados(msg) {
-  const bruto = await new MailComposer({ ...msg, date: new Date() }).compile().build();
+  const bruto = await montarCopiaEnviados(msg);
   const imap = new ImapFlow({
     host: config.email.host, port: config.email.porta, secure: true, logger: false,
     auth: { user: config.email.usuario, pass: config.email.senha },

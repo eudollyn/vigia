@@ -8,7 +8,7 @@ import { simpleParser } from 'mailparser';
 
 process.env.EMAIL_USUARIO = 'vigia@exemplo.com.br';
 process.env.EMAIL_SENHA = 'senha-ficticia';
-const { responderEmail, montarResposta } = await import('../src/enviar-email.js');
+const { responderEmail, montarResposta, montarCopiaEnviados } = await import('../src/enviar-email.js');
 
 const original = (cab) => simpleParser([...cab, 'Content-Type: text/plain; charset=utf-8', '', 'Pode mandar a cotação?'].join('\r\n'));
 const smtpFalso = () => nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'crlf' });
@@ -65,4 +65,22 @@ test('SMTP aceita e só os Enviados falham: sucesso com aviso, sem reenviar', as
     { smtp, enviados: async () => { throw new Error('IMAP fora do ar'); } });
   assert.equal(envios, 1);
   assert.match(r.aviso, /Enviados.*IMAP fora do ar.*Não reenvie/);
+});
+
+test('um Message-ID só por resposta: o mesmo no SMTP e na cópia dos Enviados', async () => {
+  const cab = ['From: Fornecedor <vendas@fornecedor.com.br>', 'Subject: Cotação', 'Message-ID: <orig-3@fornecedor.com.br>'];
+  const responderUma = async () => {
+    let bruto = null;
+    const { r, enviado } = await responder(cab, { enviados: async (msg) => { bruto = await montarCopiaEnviados(msg); } });
+    return { r, enviado, copia: await simpleParser(bruto) };
+  };
+  const a = await responderUma();
+  assert.match(a.enviado.messageId, /^<[0-9a-f-]{36}@exemplo\.com\.br>$/);
+  assert.equal(a.copia.messageId, a.enviado.messageId);
+  assert.equal(a.r.messageId, a.enviado.messageId);
+  assert.equal(a.enviado.inReplyTo, '<orig-3@fornecedor.com.br>');
+  assert.equal(a.copia.inReplyTo, '<orig-3@fornecedor.com.br>');
+  assert.equal(a.copia.date.getTime(), a.enviado.date.getTime());
+  const b = await responderUma();
+  assert.notEqual(b.enviado.messageId, a.enviado.messageId); // cada resposta tem o seu
 });
