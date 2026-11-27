@@ -387,8 +387,16 @@ function guardarAtrasada(item, icone, origem) {
   clearTimeout(tAtrasadas);
   tAtrasadas = setTimeout(falarAtrasadas, 12_000); // espera o WhatsApp terminar de entregar tudo
 }
-function falarAtrasadas() {
-  const lista = atrasadas.splice(0);
+async function falarAtrasadas() {
+  let lista = atrasadas.splice(0);
+  if (!lista.length) return;
+  // o que você já leu ou respondeu no celular enquanto o Vigia estava fora não é falado (fica só na tela)
+  try {
+    const { jaLidaNoCelular } = await import('./whatsapp.js');
+    const pendentes = lista.filter((a) => a.itemFalado.canal !== 'whatsapp' || !jaLidaNoCelular(a.itemFalado));
+    if (pendentes.length < lista.length) log(`aviso das mensagens de quando estava fora: ${lista.length - pendentes.length} de ${lista.length} já lidas/respondidas no celular (sem voz)`);
+    lista = pendentes;
+  } catch {}
   if (!lista.length) return;
   const origens = [...new Set(lista.map((a) => a.origem))];
   const nomes = origens.slice(0, 4);

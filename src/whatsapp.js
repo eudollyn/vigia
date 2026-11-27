@@ -18,6 +18,7 @@ import { log, notificar, registrarEnvio, registrarEnvioAudio, registrarEncaminha
 import { transcrever } from './transcrever.js';
 import { recebeu, respondeu } from './pendencias.js';
 import { BancoWhatsApp, isoSP, telefoneDoJid } from './whatsapp-banco.js';
+import { criarPonteImoveis, GRUPO_IMOVEIS, INSTI_IMOVEIS } from './ponte-imoveis.js';
 
 const SESSAO = path.join(DADOS, 'whatsapp-sessao');
 const CONTATOS = path.join(DADOS, 'contatos.json');
@@ -322,6 +323,21 @@ export function bancoWhatsApp() {
 }
 const noBanco = (fn) => { try { const b = bancoWhatsApp(); if (b) return fn(b); } catch (e) { log(`WhatsApp: banco: ${e.message}`); } return undefined; };
 
+// Até quando (segundos) cada conversa já foi lida/respondida em outro aparelho (celular, WhatsApp Web).
+// Vem das confirmações de leitura do seu celular e das suas próprias mensagens, inclusive as entregues ao religar.
+const lidoAte = new Map();
+const chavesConversa = (ids) => [...new Set((ids || []).filter(Boolean).flatMap((j) => [jidNormalizedUser(j), noBanco((b) => b.canonico(j))]).filter(Boolean))];
+function marcarLidaAte(ids, ts) {
+  const t = Number(ts) || Math.floor(Date.now() / 1000);
+  for (const k of chavesConversa(ids)) if ((lidoAte.get(k) || 0) < t) lidoAte.set(k, t);
+}
+/** true = você já leu ou respondeu essa conversa depois da última mensagem do aviso (não precisa falar de novo). */
+export function jaLidaNoCelular(item) {
+  const ts = Number(item?.ultimoTs) || 0;
+  if (!ts) return false;
+  return chavesConversa([item.jid, ...(item.ids || [])]).some((k) => (lidoAte.get(k) || 0) >= ts);
+}
+
 /** Avisos antigos (historico.jsonl) entram uma vez, depois que os grupos foram carregados (para achar o grupo pelo nome). */
 function migrarAvisosAntigos() {
   noBanco((b) => {
@@ -543,6 +559,11 @@ async function buscarEnviada(key) {
 }
 
 export function iniciarWhatsApp(aoChegar) {
+  let ponteImoveis = null;
+  try {
+    ponteImoveis = criarPonteImoveis({ pasta: DADOS, log });
+    log('Vigia imoveis: modulo carregado (grupo e contato dedicados).');
+  } catch (e) { log('Vigia imoveis: modulo indisponivel; Vigia normal preservado (' + e.message + ')'); }
   bancoWhatsApp();
   // Recupera o que chegou enquanto o Vigia estava fora (PC desligado, reinício): aceita mensagens desde a última
   // vez que ele esteve ligado (dados/whatsapp-visto.txt, gravado a cada 30 s), no máximo 18 h para trás.
@@ -579,7 +600,7 @@ export function iniciarWhatsApp(aoChegar) {
       buffers.delete(chave);
       const texto = b.grupo ? b.linhas.map((l) => `${l.autor}: ${l.texto}`).join('\n') : b.linhas.map((l) => l.texto).join('\n');
       const de = b.grupo ? [...new Set(b.linhas.map((l) => l.autor))].slice(0, 3).join(', ') : b.de;
-      aoChegar({ canal: 'whatsapp', jid: chave, de, grupo: b.grupo, texto, quantidade: b.linhas.length, msgIds: b.linhas.map((l) => l.msgId).filter(Boolean), ...(estaSilenciadaNoZap([...b.ids]) ? { silenciadaNoZap: true } : {}), ...(b.atrasada ? { atrasada: true } : {}) });
+      aoChegar({ canal: 'whatsapp', jid: chave, de, grupo: b.grupo, texto, quantidade: b.linhas.length, ids: [...b.ids], ultimoTs: Math.max(0, ...b.linhas.map((l) => l.ts || 0)), msgIds: b.linhas.map((l) => l.msgId).filter(Boolean), ...(estaSilenciadaNoZap([...b.ids]) ? { silenciadaNoZap: true } : {}), ...(b.atrasada ? { atrasada: true } : {}) });
     }, espera);
   }
 
@@ -625,6 +646,17 @@ export function iniciarWhatsApp(aoChegar) {
     sock.ev.on('lid-mapping.update', (m) => noBanco((b) => { for (const x of [].concat(m || [])) if (x?.lid && x?.pn) b.registrarAlias(x.lid, x.pn); }));
     // status das mensagens enviadas (entregue/lida pelo destinatário)
     sock.ev.on('messages.update', (lista) => noBanco((b) => { for (const u of lista || []) if (u?.key?.fromMe && typeof u.update?.status === 'number') b.atualizarStatusEnvio(u.key.id, u.update.status); }));
+    // você leu no celular (confirmação de leitura do seu próprio aparelho): conversa individual / grupo
+    sock.ev.on('messages.update', (lista) => {
+      for (const u of lista || []) if (u?.key && !u.key.fromMe && u.update?.status >= proto.WebMessageInfo.Status.READ) marcarLidaAte([u.key.remoteJid], u.update.messageTimestamp);
+    });
+    sock.ev.on('message-receipt.update', (lista) => {
+      const eu = [meuJid, sock.user?.lid].filter(Boolean).map((j) => jidNormalizedUser(j).split('@')[0]);
+      for (const r of lista || []) {
+        const quem = jidNormalizedUser(r?.receipt?.userJid || '').split('@')[0];
+        if (r?.receipt?.readTimestamp && quem && eu.includes(quem)) marcarLidaAte([r.key?.remoteJid], r.receipt.readTimestamp);
+      }
+    });
     // arquivar/desarquivar no celular (e a lista inicial ao conectar)
     const lerChats = (lista, absoluto = false) => {
       for (const c of lista || []) {
@@ -759,7 +791,31 @@ export function iniciarWhatsApp(aoChegar) {
           if (!jid) continue;
           if (isJidStatusBroadcast(jid) || isJidBroadcast(jid) || isJidNewsletter(jid)) continue;
           const idsChat = [jid, msg.key.remoteJidAlt].filter(Boolean).map((j) => jidNormalizedUser(j));
+          // Extensao de imoveis: somente o grupo autorizado e respostas correlacionadas do Insti.
+          if (ponteImoveis && sockAtual === sock) {
+            try {
+              const grupoImoveis = jid === GRUPO_IMOVEIS;
+              const idsPonte = grupoImoveis ? idsChat : (!isJidGroup(jid) && !msg.key.fromMe
+                ? [...idsChat, noBanco((b) => b.canonico(jid, msg.key.remoteJidAlt))]
+                : []);
+              if (grupoImoveis || idsPonte.includes(INSTI_IMOVEIS)) {
+                const m = msg.message;
+                const t = m?.conversation ?? m?.extendedTextMessage?.text ?? m?.imageMessage?.caption ?? m?.videoMessage?.caption;
+                if (typeof t === 'string' && t) {
+                  void ponteImoveis({ tipo: type, jid, ids: idsPonte, deMim: !!msg.key.fromMe,
+                    ts: Number(msg.messageTimestamp || 0), texto: t,
+                    enviar: async (destino, texto) => {
+                      if (sockAtual !== sock || conexaoWa.situacao !== 'conectado') throw Error('WhatsApp indisponivel');
+                      const enviada = await sock.sendMessage(destino, { text: texto });
+                      if (!enviada?.key?.id) throw Error('Envio nao confirmado');
+                      guardarEnviada(enviada);
+                    } });
+                }
+              }
+            } catch (e) { log('Vigia imoveis: falha isolada (' + e.message + ')'); }
+          }
           if (msg.key.fromMe) { // você mandou mensagem (celular, PC ou por voz)
+            marcarLidaAte(idsChat, msg.messageTimestamp); // respondeu = já viu o que veio antes
             if (!isJidGroup(jid)) respondeu(idsChat);
             marcarConversa(idsChat); // está conversando: as respostas dessa pessoa são avisadas na hora
             continue;
@@ -780,13 +836,13 @@ export function iniciarWhatsApp(aoChegar) {
           if (atrasada) log(`WhatsApp: recuperada mensagem de quando o Vigia estava fora (${new Date(Number(msg.messageTimestamp) * 1000).toLocaleTimeString('pt-BR')})`);
           if (isJidGroup(jid)) {
             const autorJid = msg.key.participantAlt || msg.key.participant || '';
-            enfileirar(jid, { grupo: await nomeGrupo(sock, jid), atrasada }, { autor: nomeDe(autorJid, msg.pushName), texto, msgId: msg.key.id, ids: idsChat });
+            enfileirar(jid, { grupo: await nomeGrupo(sock, jid), atrasada }, { autor: nomeDe(autorJid, msg.pushName), texto, msgId: msg.key.id, ids: idsChat, ts: Number(msg.messageTimestamp || 0) });
           } else {
             const remet = msg.key.remoteJidAlt || jid;
             if (msg.pushName) { const id = jidNormalizedUser(remet); contatos[id] = { ...contatos[id], notify: msg.pushName }; salvarContatos(); }
             const nome = nomeDe(remet, msg.pushName);
             recebeu(idsChat, nome);
-            enfileirar(jid, { de: nome, atrasada }, { texto, msgId: msg.key.id, ids: idsChat });
+            enfileirar(jid, { de: nome, atrasada }, { texto, msgId: msg.key.id, ids: idsChat, ts: Number(msg.messageTimestamp || 0) });
           }
         } catch (e) { log(`WhatsApp: erro ao ler mensagem (${e.message})`); }
       }
